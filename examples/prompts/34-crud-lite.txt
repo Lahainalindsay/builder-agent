@@ -1,0 +1,2 @@
+Create a simple interface to track vendor records.
+Users should be able to add and review records, with clear empty states.

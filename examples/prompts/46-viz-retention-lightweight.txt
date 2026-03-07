@@ -1,0 +1,1 @@
+Visualize weekly user retention as a simple bar trend (no heavy chart libraries). Include a legend, tooltips or inline labels, and a short insights summary.

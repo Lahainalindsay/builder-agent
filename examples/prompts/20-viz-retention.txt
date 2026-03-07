@@ -1,0 +1,2 @@
+Visualize weekly user retention for a mobile app team.
+Show a trend view and a secondary insights section with lightweight charts.

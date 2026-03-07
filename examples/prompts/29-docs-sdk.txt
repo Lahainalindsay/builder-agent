@@ -1,0 +1,2 @@
+Build SDK documentation for a developer platform.
+Include getting started content, searchable docs navigation, and best practices.

@@ -1,0 +1,1 @@
+Build an admin panel to manage campaigns. Must support creating new campaigns (name, owner, status) and listing them with search + filter. Persist data locally so refresh keeps state.

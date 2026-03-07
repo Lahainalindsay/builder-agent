@@ -1,0 +1,2 @@
+Create an operations panel to manage support tickets.
+Allow creating and listing tickets, searching records, and persisting them locally.

@@ -1,0 +1,2 @@
+Visualize campaign performance trends for a marketing operations team.
+Keep charts lightweight and show a summary insights panel.

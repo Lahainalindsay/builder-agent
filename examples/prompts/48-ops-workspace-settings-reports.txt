@@ -1,0 +1,1 @@
+Create an operations workspace with Overview, Reports, and Settings pages. Reports should include a table with export CSV. Settings should include at least 3 toggles and a team name field.

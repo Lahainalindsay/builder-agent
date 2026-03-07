@@ -1,0 +1,2 @@
+Build an operations workspace with Settings and Reports pages.
+Include navigation, local session behavior, and a clean management interface.

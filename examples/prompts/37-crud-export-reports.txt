@@ -1,0 +1,2 @@
+Create a management tool for affiliate campaigns.
+Support create, list, search, filter by status, export CSV, and a reports page.

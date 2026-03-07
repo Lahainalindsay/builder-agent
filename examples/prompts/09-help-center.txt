@@ -1,0 +1,2 @@
+Create a help center for a SaaS billing product.
+Include documentation sections, troubleshooting, and a searchable navigation sidebar.

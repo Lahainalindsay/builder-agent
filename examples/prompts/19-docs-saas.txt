@@ -1,0 +1,2 @@
+Build product documentation for a SaaS analytics API.
+Include a searchable sidebar, getting started article, and troubleshooting notes.

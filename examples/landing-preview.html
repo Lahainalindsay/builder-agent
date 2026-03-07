@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LumaFlow AI</title>
+  <style>
+    :root {
+      --bg: #f8f7f2;
+      --ink: #1f2a2b;
+      --brand: #0f766e;
+      --brand-2: #f59e0b;
+      --card: #ffffff;
+      --muted: #5a6b6d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 20% 20%, #d8f1ef 0%, transparent 40%),
+        radial-gradient(circle at 80% 10%, #fde8bf 0%, transparent 35%),
+        var(--bg);
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 24px;
+      align-items: center;
+      padding: 36px 0;
+    }
+    h1 { font-size: clamp(2rem, 5vw, 3.8rem); margin: 0 0 12px; line-height: 1.05; }
+    p { color: var(--muted); font-size: 1.05rem; }
+    .btns { display: flex; gap: 12px; margin-top: 20px; }
+    .btn {
+      border: 0;
+      padding: 12px 18px;
+      border-radius: 999px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn.primary { background: var(--brand); color: #fff; }
+    .btn.secondary { background: #fff; color: var(--ink); border: 1px solid #d7d7d7; }
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 12px 30px rgba(0,0,0,.08);
+    }
+    .stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-top: 14px; }
+    .stat { background: #f2f8f8; border-radius: 12px; padding: 10px; text-align: center; }
+    .features { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin: 30px 0; }
+    .feature { background: #fff; border-radius: 12px; padding: 14px; border: 1px solid #ececec; }
+    .cta {
+      margin: 26px 0 10px;
+      background: linear-gradient(135deg, var(--brand), #115e59);
+      color: #fff;
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    input {
+      border: none;
+      border-radius: 999px;
+      padding: 10px 14px;
+      min-width: 220px;
+      outline: none;
+    }
+    .tiny { font-size: .85rem; color: #dbe9e8; }
+    @media (max-width: 860px) {
+      .hero { grid-template-columns: 1fr; }
+      .features { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <div>
+        <h1>Turn Every Visitor Into a Loyal Customer</h1>
+        <p>
+          LumaFlow AI creates personalized product journeys for each shopper in real time,
+          boosting conversions without extra ad spend.
+        </p>
+        <div class="btns">
+          <button class="btn primary" onclick="alert('Demo scheduled!')">Book a Demo</button>
+          <button class="btn secondary" onclick="document.getElementById('plans').scrollIntoView({behavior:'smooth'})">See Pricing</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 8px;">Live Snapshot</h3>
+        <p style="margin-top:0;">Your personalization engine in action.</p>
+        <div class="stats">
+          <div class="stat"><strong>+27%</strong><br/>Conversion</div>
+          <div class="stat"><strong>-19%</strong><br/>CAC</div>
+          <div class="stat"><strong>4.8/5</strong><br/>UX Score</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="features">
+      <div class="feature"><strong>Smart Segments</strong><p>Clusters visitors by behavior signals, not guesswork.</p></div>
+      <div class="feature"><strong>AI Recommendations</strong><p>Shows the right product at the right moment.</p></div>
+      <div class="feature"><strong>Instant Testing</strong><p>Ships A/B experiments automatically and keeps winners.</p></div>
+    </section>
+
+    <section id="plans" class="features">
+      <div class="feature"><strong>Starter</strong><p>$49/mo for early stores.</p></div>
+      <div class="feature" style="border:2px solid var(--brand)"><strong>Growth</strong><p>$149/mo with advanced automations.</p></div>
+      <div class="feature"><strong>Scale</strong><p>Custom pricing + white-glove support.</p></div>
+    </section>
+
+    <section class="cta">
+      <div>
+        <strong>Get early access</strong>
+        <div class="tiny">No credit card required.</div>
+      </div>
+      <div>
+        <input id="email" type="email" placeholder="you@company.com" />
+        <button class="btn" style="background:var(--brand-2);color:#1f2a2b" onclick="joinWaitlist()">Join</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    function joinWaitlist() {
+      const email = document.getElementById('email').value.trim();
+      if (!email || !email.includes('@')) {
+        alert('Enter a valid email.');
+        return;
+      }
+      alert('Thanks, ' + email + '! You are on the waitlist.');
+    }
+  </script>
+</body>
+</html>

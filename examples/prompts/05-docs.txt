@@ -1,0 +1,3 @@
+Build a searchable docs site for an API platform.
+Include a docs index, article content area, and lightweight search field.
+Keep dependencies minimal and ship as static frontend only.

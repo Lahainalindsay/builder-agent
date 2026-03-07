@@ -1,0 +1,2 @@
+Build a playful landing page for a habit tracking app.
+Include hero CTA, feature cards, and FAQ content.

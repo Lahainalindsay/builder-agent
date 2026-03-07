@@ -1,0 +1,2 @@
+Build a landing page for a productivity app with a hero CTA and feature cards.
+Keep it clean and modern.

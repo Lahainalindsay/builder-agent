@@ -1,0 +1,2 @@
+Build an inventory manager to create and track warehouse items.
+Must support create, list, filter by status, and local persistence.

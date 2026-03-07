@@ -1,0 +1,2 @@
+Visualize weekly conversion trends for a marketing team.
+Keep the charts lightweight, show a trend view, and add a secondary insights panel.

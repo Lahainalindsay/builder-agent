@@ -1,0 +1,2 @@
+Create a local auth flow with profile settings for a creator portal.
+Include sign in, profile preferences, and notification controls.

@@ -1,0 +1,2 @@
+Build a team settings experience with sign in, member profile settings, and notifications.
+Use a local session stub only.

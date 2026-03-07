@@ -1,0 +1,31 @@
+{
+  "name": "seedstr-builder-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node ./node_modules/tsx/dist/cli.mjs src/index.ts",
+    "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "cli": "node ./node_modules/tsx/dist/cli.mjs src/cli/index.ts",
+    "dry-run": "node ./node_modules/tsx/dist/cli.mjs src/index.ts --prompt-file examples/mystery-prompt.txt --output-dir ./.runs/example",
+    "listen": "node ./node_modules/tsx/dist/cli.mjs src/index.ts",
+    "smoke": "node ./node_modules/tsx/dist/cli.mjs src/cli/index.ts smoke",
+    "simulate": "node ./node_modules/tsx/dist/cli.mjs src/cli/index.ts simulate",
+    "register": "node ./node_modules/tsx/dist/cli.mjs src/cli/index.ts register",
+    "status": "node ./node_modules/tsx/dist/cli.mjs src/cli/index.ts status",
+    "verify": "node ./node_modules/tsx/dist/cli.mjs src/cli/index.ts verify",
+    "profile": "node ./node_modules/tsx/dist/cli.mjs src/cli/index.ts profile",
+    "eval": "node ./node_modules/tsx/dist/cli.mjs src/eval/evaluatePrompts.ts",
+    "eval:quick": "node ./node_modules/tsx/dist/cli.mjs src/eval/evaluatePrompts.ts --quick",
+    "eval:build": "node ./node_modules/tsx/dist/cli.mjs src/eval/evaluatePrompts.ts --verify-builds",
+    "eval:sample": "node ./node_modules/tsx/dist/cli.mjs src/eval/evaluatePrompts.ts --sample-builds=5",
+    "typo-check": "node ./node_modules/typescript/bin/tsc -p tsconfig.json && node dist/cli/typoCheck.js"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}

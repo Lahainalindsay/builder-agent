@@ -1,0 +1,3 @@
+Create an auth and settings experience for a team dashboard.
+Include sign in, profile settings, and notification preferences.
+Use a local session stub instead of a real backend.

@@ -1,0 +1,1 @@
+Build a landing page for a company marketplace. Include a hero with two CTAs (Get started + View features), a marketplace preview grid, feature cards, FAQ, and a footer. Make it responsive and modern.

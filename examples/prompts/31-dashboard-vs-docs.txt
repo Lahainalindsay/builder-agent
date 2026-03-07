@@ -1,0 +1,3 @@
+Create a docs-like experience for analytics operators.
+It needs searchable navigation, but also KPI highlights and a reports section.
+Keep dependencies minimal.

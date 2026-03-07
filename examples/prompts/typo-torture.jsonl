@@ -1,0 +1,5 @@
+{"prompt":"Build a login page with a sign up link and forgot password flow.","expectTokens":["login","signup"]}
+{"prompt":"Design a dash board for maintenence requests with calender scheduling.","expectTokens":["dashboard","maintenance","calendar"]}
+{"prompt":"Create an e-mail outreach campaign and follow up sequence.","expectTokens":["email","outreach"]}
+{"prompt":"Write a security audit report for an ERC - 20 contract and remediation checklist.","expectTokens":["erc-20","audit"]}
+{"prompt":"Build a front end app with a back end API and databse storage.","expectTokens":["frontend","backend","database"]}

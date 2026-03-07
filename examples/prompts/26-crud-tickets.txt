@@ -1,0 +1,2 @@
+Create a support ticket manager for operators.
+Allow creating tickets, listing records, filtering by status, and saving locally.

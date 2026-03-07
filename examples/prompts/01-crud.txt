@@ -1,0 +1,3 @@
+Create an admin panel to manage campaigns.
+Must allow creating and listing campaigns with status.
+Prefer local storage and fast UX.

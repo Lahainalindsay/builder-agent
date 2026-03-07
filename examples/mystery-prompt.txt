@@ -1,0 +1,1 @@
+Build a modern analytics dashboard for a creator marketplace. Show revenue, top creators, recent activity, and a simple campaign performance chart. Make it feel polished and product-ready.

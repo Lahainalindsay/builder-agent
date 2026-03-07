@@ -1,0 +1,2 @@
+Make a marketing site for an analytics product.
+Include a hero CTA, feature cards, and a small insights section with trend visuals.

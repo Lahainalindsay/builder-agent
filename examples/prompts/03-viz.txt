@@ -1,0 +1,2 @@
+Visualize weekly signups as a lightweight bar trend.
+Keep dependencies minimal.

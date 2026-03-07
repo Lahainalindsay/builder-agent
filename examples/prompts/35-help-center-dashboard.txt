@@ -1,0 +1,2 @@
+Build a help center for internal operations.
+Include searchable docs navigation and an overview page with recent activity.

@@ -1,0 +1,3 @@
+Build an admin interface to manage creator campaigns.
+Must support create, list, search, filter by status, and export CSV.
+Prefer local storage.

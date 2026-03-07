@@ -1,0 +1,3 @@
+Create an admin analytics dashboard for subscription revenue.
+Include KPI cards, reports, recent activity, and an export action.
+Use a clean dashboard layout.

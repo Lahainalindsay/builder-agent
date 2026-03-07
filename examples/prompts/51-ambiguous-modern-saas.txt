@@ -1,0 +1,1 @@
+Build a modern frontend for a SaaS product. Make it look premium, include navigation, and provide a clear onboarding CTA. Use mock data and keep dependencies minimal.

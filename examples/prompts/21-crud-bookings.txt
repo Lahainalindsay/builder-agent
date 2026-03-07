@@ -1,0 +1,2 @@
+Create an operations app to manage bookings.
+Must support add, list, search, filter, and export CSV using local data.

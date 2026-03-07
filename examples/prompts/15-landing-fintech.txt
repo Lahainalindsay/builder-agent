@@ -1,0 +1,3 @@
+Build a fintech landing page for a business payments product.
+Include hero CTA, trust indicators, feature cards, and FAQ content.
+Keep it polished and responsive.

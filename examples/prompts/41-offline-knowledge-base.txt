@@ -1,0 +1,2 @@
+Create an offline-first knowledge base for customer support agents.
+Use local content, searchable sections, and lightweight docs navigation.

@@ -1,0 +1,2 @@
+Create a small app with Settings and Reports pages.
+Include navigation and clear empty states.

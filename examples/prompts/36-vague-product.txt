@@ -1,0 +1,2 @@
+Build a modern frontend for a SaaS product.
+Keep it clean, responsive, and obviously functional.

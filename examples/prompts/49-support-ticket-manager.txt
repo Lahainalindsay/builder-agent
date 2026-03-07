@@ -1,0 +1,1 @@
+Build a support ticket manager for operators. Create tickets with title, customer, priority, and status. Show a list view with status chips and an empty state.

@@ -1,0 +1,3 @@
+Build a polished admin experience for a creator platform.
+It should feel like a dashboard but also let operators manage records quickly.
+Keep it frontend only and use mock data.

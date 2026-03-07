@@ -1,0 +1,2 @@
+Make a creator marketplace dashboard with Overview, Reports, and Activity pages.
+Show metrics, performance trends, and recent operational events.

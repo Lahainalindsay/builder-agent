@@ -1,0 +1,3 @@
+Make a polished analytics dashboard with Overview, Reports, and Activity pages.
+Show KPI cards, a trend breakdown, and recent activity.
+Add an export action and keep it responsive.

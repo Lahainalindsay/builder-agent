@@ -1,0 +1,1 @@
+Build an offline-first knowledge base for customer support. Articles should be searchable, stored locally, and editable. Add an import/export JSON feature for backups.

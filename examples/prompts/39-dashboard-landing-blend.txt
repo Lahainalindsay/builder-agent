@@ -1,0 +1,2 @@
+Create a landing page for a creator analytics suite.
+It should have a hero section, KPI summary, and a strong call to action.

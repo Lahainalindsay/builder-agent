@@ -1,0 +1,2 @@
+Build developer docs for an authentication SDK.
+Include getting started, authentication notes, and searchable documentation navigation.

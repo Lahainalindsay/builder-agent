@@ -1,0 +1,1 @@
+Create an analytics dashboard for a creator marketplace with KPI cards (revenue, active creators, campaigns live, conversion). Add a performance breakdown section and a recent activity feed. Include Overview / Reports / Activity navigation.

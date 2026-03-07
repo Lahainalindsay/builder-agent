@@ -1,0 +1,3 @@
+Build a modern analytics dashboard for a creator marketplace.
+Must have KPI cards, performance breakdown, and recent activity.
+Make it responsive and polished.

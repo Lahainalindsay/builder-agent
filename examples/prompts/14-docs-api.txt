@@ -1,0 +1,2 @@
+Build developer documentation for a payments API.
+Include getting started, authentication notes, and best practices in a docs layout.

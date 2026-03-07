@@ -1,0 +1,2 @@
+Build a settings console for a team workspace.
+Do not use a real backend, but include sign in, preferences, and profile editing.

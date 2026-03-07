@@ -1,0 +1,2 @@
+Build a settings console for account preferences and security notifications.
+Use a fake local session and keep the interface compact.

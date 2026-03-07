@@ -1,0 +1,1 @@
+Build a settings console with Profile, Preferences, and Security sections. Each section should be a form with Save/Cancel. Store changes locally and show a “Saved” toast.

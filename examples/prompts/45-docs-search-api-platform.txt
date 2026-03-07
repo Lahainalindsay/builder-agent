@@ -1,0 +1,1 @@
+Build a searchable documentation site for an API platform. Include sidebar navigation, a search input that filters articles, and a content reader. Provide at least 6 mock docs pages.
