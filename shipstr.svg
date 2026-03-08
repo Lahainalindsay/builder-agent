@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Shipstr icon (cool)">
+  <defs>
+    <style>
+      :root{
+        --bg0:#070B16;
+        --bg1:#0B1533;
+        --c1:#6EE7FF; /* cyan */
+        --c2:#A78BFA; /* violet */
+        --c3:#34D399; /* green */
+        --w:rgba(255,255,255,.78);
+        --w2:rgba(255,255,255,.28);
+        --w3:rgba(255,255,255,.14);
+      }
+    </style>
+
+    <clipPath id="clip">
+      <circle cx="256" cy="256" r="256"></circle>
+    </clipPath>
+
+    <radialGradient id="bg" cx="35%" cy="25%" r="80%">
+      <stop offset="0" stop-color="#12204A"></stop>
+      <stop offset="0.45" stop-color="var(--bg1)"></stop>
+      <stop offset="1" stop-color="var(--bg0)"></stop>
+    </radialGradient>
+
+    <linearGradient id="hull" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="var(--c1)"></stop>
+      <stop offset="0.55" stop-color="var(--c2)"></stop>
+      <stop offset="1" stop-color="var(--c3)"></stop>
+    </linearGradient>
+
+    <linearGradient id="neon" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="var(--c1)" stop-opacity="0"></stop>
+      <stop offset="0.45" stop-color="var(--c2)" stop-opacity=".55"></stop>
+      <stop offset="1" stop-color="var(--c3)" stop-opacity="0"></stop>
+    </linearGradient>
+
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="10" result="b"></feGaussianBlur>
+      <feColorMatrix in="b" type="matrix" values="1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 .55 0" result="c"></feColorMatrix>
+      <feMerge>
+        <feMergeNode in="c"></feMergeNode>
+        <feMergeNode in="SourceGraphic"></feMergeNode>
+      </feMerge>
+    </filter>
+
+    <filter id="spark" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="1.25" result="b"></feGaussianBlur>
+      <feMerge>
+        <feMergeNode in="b"></feMergeNode>
+        <feMergeNode in="SourceGraphic"></feMergeNode>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <g clip-path="url(#clip)">
+    <!-- Background -->
+    <rect width="512" height="512" fill="url(#bg)"></rect>
+
+    <!-- Starfield (hand-placed so it stays deterministic) -->
+    <g opacity="0.9">
+      <circle cx="68" cy="96" r="1.4" fill="white" opacity=".55"></circle>
+      <circle cx="112" cy="62" r="1.1" fill="white" opacity=".35"></circle>
+      <circle cx="160" cy="110" r="1.6" fill="white" opacity=".45"></circle>
+      <circle cx="210" cy="78" r="1.2" fill="white" opacity=".30"></circle>
+      <circle cx="312" cy="88" r="1.5" fill="white" opacity=".40"></circle>
+      <circle cx="390" cy="120" r="1.1" fill="white" opacity=".30"></circle>
+      <circle cx="446" cy="78" r="1.7" fill="white" opacity=".55"></circle>
+      <circle cx="458" cy="168" r="1.0" fill="white" opacity=".25"></circle>
+      <circle cx="74" cy="188" r="1.2" fill="white" opacity=".28"></circle>
+      <circle cx="120" cy="224" r="1.8" fill="white" opacity=".55"></circle>
+      <circle cx="184" cy="196" r="1.1" fill="white" opacity=".30"></circle>
+      <circle cx="420" cy="240" r="1.4" fill="white" opacity=".35"></circle>
+      <circle cx="452" cy="292" r="1.1" fill="white" opacity=".28"></circle>
+      <circle cx="56" cy="318" r="1.6" fill="white" opacity=".45"></circle>
+      <circle cx="108" cy="372" r="1.2" fill="white" opacity=".30"></circle>
+      <circle cx="188" cy="410" r="1.7" fill="white" opacity=".40"></circle>
+      <circle cx="312" cy="432" r="1.1" fill="white" opacity=".25"></circle>
+      <circle cx="404" cy="396" r="1.8" fill="white" opacity=".55"></circle>
+      <circle cx="458" cy="420" r="1.2" fill="white" opacity=".30"></circle>
+    </g>
+
+    <!-- Neon ring + orbit arcs -->
+    <circle cx="256" cy="256" r="190" fill="none" stroke="url(#neon)" stroke-width="44" opacity="0.95"></circle>
+    <g fill="none" stroke-linecap="round" opacity="0.55">
+      <path d="M96 284 C132 154 256 108 380 164" stroke="var(--w3)" stroke-width="10"></path>
+      <path d="M110 312 C158 420 332 438 404 330" stroke="var(--w3)" stroke-width="10"></path>
+      <path d="M132 250 C174 172 274 148 356 188" stroke="var(--w2)" stroke-width="8"></path>
+    </g>
+
+    <!-- Small orbit dots -->
+    <g filter="url(#spark)">
+      <circle cx="388" cy="170" r="4.2" fill="var(--c1)" opacity="0.85"></circle>
+      <circle cx="112" cy="316" r="3.6" fill="var(--c2)" opacity="0.80"></circle>
+      <circle cx="404" cy="332" r="3.2" fill="var(--c3)" opacity="0.78"></circle>
+    </g>
+
+    <!-- Ship mark -->
+    <g filter="url(#glow)">
+      <!-- soft engine plume -->
+      <path d="M256 390
+               C230 392 206 406 196 426
+               C220 420 242 416 256 416
+               C270 416 292 420 316 426
+               C306 406 282 392 256 390 Z" fill="url(#neon)" opacity="0.75"></path>
+
+      <!-- sails -->
+      <path d="M256 120
+               C296 164 324 222 324 288
+               C324 308 321 326 314 344
+               L256 344 Z" fill="url(#hull)" opacity="0.98"></path>
+      <path d="M256 150
+               C218 188 190 236 190 288
+               C190 310 193 328 200 344
+               L256 344 Z" fill="url(#hull)" opacity="0.72"></path>
+
+      <!-- mast -->
+      <rect x="250" y="126" width="12" height="252" rx="6" fill="var(--w)"></rect>
+
+      <!-- hull -->
+      <path d="M148 372
+               C190 416 234 438 256 438
+               C278 438 322 416 364 372
+               C320 384 280 390 256 390
+               C232 390 192 384 148 372 Z" fill="url(#hull)"></path>
+
+      <!-- wake lines -->
+      <path d="M132 456 C196 476 316 476 380 456" stroke="var(--w2)" stroke-width="12" fill="none"></path>
+      <path d="M162 480 C212 494 300 494 350 480" stroke="var(--w3)" stroke-width="10" fill="none"></path>
+
+      <!-- forward chevron -->
+      <path d="M346 196 L402 228 L346 260 L366 228 Z" fill="rgba(255,255,255,0.82)"></path>
+      <path d="M334 206 L374 228 L334 250 L348 228 Z" fill="rgba(255,255,255,0.35)"></path>
+    </g>
+
+    <!-- Outer rim -->
+    <circle cx="256" cy="256" r="252" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="8"></circle>
+  </g>
+</svg>

@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 export interface LookupReference {
   label: string;
   url: string;
@@ -53,8 +56,117 @@ const KNOWN_DOC_PACKAGES = [
   "fastapi"
 ];
 
+type LookupAction = "price" | "market" | "github" | "weather" | "timezone" | "geocoding" | "docs" | "exchange-rate";
+
+interface LookupRule {
+  terms: string[];
+  actions: LookupAction[];
+}
+
 function containsAny(haystack: string, needles: string[]): boolean {
   return needles.some((needle) => haystack.includes(needle));
+}
+
+function parseTerms(conditionText: string): string[] {
+  const quoted = Array.from(conditionText.matchAll(/["“]([^"”]+)["”]/g)).map((m) => m[1].trim().toLowerCase());
+  if (quoted.length) return quoted;
+
+  return conditionText
+    .replace(/if\s+prompt\s+contains/i, "")
+    .split(/\bor\b|,/i)
+    .map((part) => part.replace(/[^a-z0-9\s+-]/gi, " ").trim().toLowerCase())
+    .filter((part) => part.length >= 2);
+}
+
+function detectActionsFromText(text: string): LookupAction[] {
+  const lower = text.toLowerCase();
+  const actions = new Set<LookupAction>();
+
+  if (containsAny(lower, ["coingecko", "price_lookup", "current price", "market value", "price"])) actions.add("price");
+  if (containsAny(lower, ["market cap", "market size", "defi landscape", "top crypto", "crypto market"])) actions.add("market");
+  if (containsAny(lower, ["github", "repository", "repo_analysis", "recent commits", "readme"])) actions.add("github");
+  if (containsAny(lower, ["weather", "forecast", "openweather"])) actions.add("weather");
+  if (containsAny(lower, ["timezone", "local time"])) actions.add("timezone");
+  if (containsAny(lower, ["geocode", "coordinates", "latitude", "longitude"])) actions.add("geocoding");
+  if (containsAny(lower, ["documentation", "docs", "knowledge base", "how to"])) actions.add("docs");
+  if (containsAny(lower, ["exchange rate", "fx", "convert currency", "usd to", "eur to", "frankfurter"])) actions.add("exchange-rate");
+
+  return Array.from(actions);
+}
+
+function inferActionsFromTerms(terms: string[]): LookupAction[] {
+  const merged = terms.join(" ").toLowerCase();
+  return detectActionsFromText(merged);
+}
+
+function parseLookupRules(markdown: string): LookupRule[] {
+  const lines = markdown.split("\n");
+  const rules: LookupRule[] = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i].trim();
+    if (!/^if\s+prompt\s+contains\s+/i.test(line)) continue;
+
+    const terms = parseTerms(line);
+    const actionText: string[] = [line];
+    let j = i + 1;
+    while (j < lines.length) {
+      const next = lines[j];
+      const nextTrim = next.trim();
+      if (/^if\s+prompt\s+contains\s+/i.test(nextTrim)) break;
+      if (/^###\s+/i.test(nextTrim)) break;
+      if (!nextTrim) {
+        j += 1;
+        continue;
+      }
+      if (/^[-*]/.test(nextTrim) || /^\s{2,}/.test(next) || /call:|execute|fetch:|inject/i.test(nextTrim)) {
+        actionText.push(nextTrim);
+        j += 1;
+        continue;
+      }
+      break;
+    }
+    i = j - 1;
+
+    const actions = detectActionsFromText(actionText.join(" "));
+    const resolvedActions = actions.length ? actions : inferActionsFromTerms(terms);
+    if (!terms.length || !resolvedActions.length) continue;
+    rules.push({ terms, actions: resolvedActions });
+  }
+
+  // Also support markdown decision tables:
+  // | prompt contains "github" | ACCEPT + FETCH | ... |
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line.startsWith("|")) continue;
+    if (/condition|action|reason/i.test(line) || /^(\|\s*-+\s*)+\|?$/.test(line)) continue;
+
+    const cols = line
+      .split("|")
+      .map((c) => c.trim())
+      .filter(Boolean);
+    if (cols.length < 2) continue;
+    if (!/prompt\s+contains/i.test(cols[0])) continue;
+
+    const terms = parseTerms(cols[0]);
+    const actions = detectActionsFromText(`${cols[0]} ${cols[1]}`);
+    const resolvedActions = actions.length ? actions : inferActionsFromTerms(terms);
+    if (!terms.length || !resolvedActions.length) continue;
+    rules.push({ terms, actions: resolvedActions });
+  }
+
+  return rules;
+}
+
+function loadLookupRules(rootDir = process.cwd()): LookupRule[] {
+  const filePath = path.join(rootDir, "skills", "rules", "lookups.md");
+  if (!fs.existsSync(filePath)) return [];
+  try {
+    const markdown = fs.readFileSync(filePath, "utf8");
+    return parseLookupRules(markdown);
+  } catch {
+    return [];
+  }
 }
 
 function shouldDisableLookups(prompt: string): boolean {
@@ -398,60 +510,106 @@ export async function runExternalLookups(prompt: string): Promise<LookupResult> 
   const cache = new Map<string, unknown>();
   const items: LookupItem[] = [];
   const warnings: string[] = [];
-  if (shouldDisableLookups(prompt)) {
+  const lowerPrompt = prompt.toLowerCase();
+  const rules = loadLookupRules();
+  const ruleActions = new Set<LookupAction>();
+  for (const rule of rules) {
+    if (rule.terms.some((term) => lowerPrompt.includes(term))) {
+      for (const action of rule.actions) ruleActions.add(action);
+    }
+  }
+
+  const explicitLookupIntent = containsAny(lowerPrompt, [
+    "current",
+    "latest",
+    "today",
+    "price",
+    "market size",
+    "market cap",
+    "weather",
+    "forecast",
+    "github",
+    "repository",
+    "documentation",
+    "exchange rate",
+    "fx"
+  ]);
+  const useRuleDrivenActions = ruleActions.size > 0;
+
+  if (shouldDisableLookups(prompt) && !explicitLookupIntent && !useRuleDrivenActions) {
     return { items, warnings };
   }
 
-  const tasks: Array<Promise<void>> = [
-    (async () => {
-      try {
-        const item = await lookupPrices(prompt, cache);
-        if (item) items.push(item);
-      } catch (error) {
-        warnings.push(`price lookup failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    })(),
-    (async () => {
-      try {
-        const item = await lookupCryptoMarket(prompt, cache);
-        if (item) items.push(item);
-      } catch (error) {
-        warnings.push(`market lookup failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    })(),
-    (async () => {
-      try {
-        const item = await lookupGitHub(prompt, cache);
-        if (item) items.push(item);
-      } catch (error) {
-        warnings.push(`github lookup failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    })(),
-    (async () => {
-      try {
-        const geoItems = await lookupWeatherAndGeo(prompt, cache);
-        items.push(...geoItems);
-      } catch (error) {
-        warnings.push(`weather/geocoding lookup failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    })(),
-    (async () => {
-      try {
-        const item = await lookupDocs(prompt, cache);
-        if (item) items.push(item);
-      } catch (error) {
-        warnings.push(`docs lookup failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    })(),
-    (async () => {
-      try {
-        const item = await lookupExchangeRates(prompt, cache);
-        if (item) items.push(item);
-      } catch (error) {
-        warnings.push(`exchange-rate lookup failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    })()
-  ];
+  const runActionTask = (action: LookupAction): Promise<void> => {
+    switch (action) {
+      case "price":
+        return (async () => {
+          try {
+            const item = await lookupPrices(prompt, cache);
+            if (item) items.push(item);
+          } catch (error) {
+            warnings.push(`price lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        })();
+      case "market":
+        return (async () => {
+          try {
+            const item = await lookupCryptoMarket(prompt, cache);
+            if (item) items.push(item);
+          } catch (error) {
+            warnings.push(`market lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        })();
+      case "github":
+        return (async () => {
+          try {
+            const item = await lookupGitHub(prompt, cache);
+            if (item) items.push(item);
+          } catch (error) {
+            warnings.push(`github lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        })();
+      case "weather":
+      case "geocoding":
+      case "timezone":
+        return (async () => {
+          try {
+            const geoItems = await lookupWeatherAndGeo(prompt, cache);
+            items.push(...geoItems);
+          } catch (error) {
+            warnings.push(`weather/geocoding lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        })();
+      case "docs":
+        return (async () => {
+          try {
+            const item = await lookupDocs(prompt, cache);
+            if (item) items.push(item);
+          } catch (error) {
+            warnings.push(`docs lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        })();
+      case "exchange-rate":
+        return (async () => {
+          try {
+            const item = await lookupExchangeRates(prompt, cache);
+            if (item) items.push(item);
+          } catch (error) {
+            warnings.push(`exchange-rate lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        })();
+      default:
+        return Promise.resolve();
+    }
+  };
+
+  const defaultActions: LookupAction[] = ["price", "market", "github", "weather", "docs", "exchange-rate"];
+  const actionsToRun = useRuleDrivenActions ? Array.from(ruleActions) : defaultActions;
+  const tasks: Array<Promise<void>> = actionsToRun.map((action) => runActionTask(action));
+
+  if (useRuleDrivenActions && !tasks.length) {
+    warnings.push("Lookup rules loaded but no actionable integrations were parsed.");
+  }
 
   const timeoutPromise = new Promise<void>((resolve) => {
     setTimeout(() => {
