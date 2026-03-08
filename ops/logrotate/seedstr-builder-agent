@@ -1,0 +1,11 @@
+/home/lahainalindsay9111/seedstr-builder-agent/.runs/listener.out.log
+/home/lahainalindsay9111/seedstr-builder-agent/.runs/listener.err.log
+{
+  daily
+  rotate 7
+  missingok
+  notifempty
+  compress
+  delaycompress
+  copytruncate
+}

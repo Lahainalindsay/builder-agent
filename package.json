@@ -20,7 +20,11 @@
     "eval:quick": "node ./node_modules/tsx/dist/cli.mjs src/eval/evaluatePrompts.ts --quick",
     "eval:build": "node ./node_modules/tsx/dist/cli.mjs src/eval/evaluatePrompts.ts --verify-builds",
     "eval:sample": "node ./node_modules/tsx/dist/cli.mjs src/eval/evaluatePrompts.ts --sample-builds=5",
-    "typo-check": "node ./node_modules/typescript/bin/tsc -p tsconfig.json && node dist/cli/typoCheck.js"
+    "typo-check": "node ./node_modules/typescript/bin/tsc -p tsconfig.json && node dist/cli/typoCheck.js",
+    "regression": "bash scripts/run-regression-suite.sh",
+    "preflight": "bash scripts/preflight.sh",
+    "drill": "bash scripts/final-drill.sh",
+    "health": "bash scripts/listener-health.sh"
   },
   "dependencies": {},
   "devDependencies": {

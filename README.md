@@ -178,7 +178,59 @@ npm run build      # compile TypeScript to dist/
 npm run dry-run    # runs a sample prompt file
 npm run listen     # start Seedstr polling/websocket runner
 npm run typo-check # prompt normalization regression suite
+npm run regression # run build + typo-check + quick eval + mixed10
+npm run preflight  # build + typo-check + landing smoke check
+npm run drill      # final listener startup drill (requires .env)
+npm run health     # check listener env and latest drill log
 ```
+
+---
+
+## Final 4 Steps (Ops + Reliability)
+
+### 7) Blind-drop regression loop
+
+Run this before and after routing/template changes:
+
+```bash
+npm run regression
+```
+
+This executes:
+- `npm run build`
+- `npm run typo-check`
+- `npm run eval:quick`
+- `bash scripts/run-mixed10.sh`
+
+### 8) Keep listener running 24/7
+
+Systemd template is included:
+- `ops/systemd/seedstr-builder-agent.service`
+
+Log rotation template is included:
+- `ops/logrotate/seedstr-builder-agent`
+
+Use them on your VPS to keep `npm run listen` always on with rotating logs.
+
+### 9) Submission readiness
+
+Use:
+
+```bash
+npm run preflight
+```
+
+It verifies build health and runs a smoke generation that prints template, output directory, and zip path.
+
+### 10) Final pre-drop drill
+
+Run immediately before the mystery drop window:
+
+```bash
+npm run drill
+```
+
+This checks required `.env` keys, builds, and confirms listener startup within a timed run.
 
 ---
 

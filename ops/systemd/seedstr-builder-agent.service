@@ -1,0 +1,17 @@
+[Unit]
+Description=Seedstr Builder Agent Listener
+After=network.target
+
+[Service]
+Type=simple
+User=lahainalindsay9111
+WorkingDirectory=/home/lahainalindsay9111/seedstr-builder-agent
+EnvironmentFile=/home/lahainalindsay9111/seedstr-builder-agent/.env
+ExecStart=/usr/bin/npm run listen
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/lahainalindsay9111/seedstr-builder-agent/.runs/listener.out.log
+StandardError=append:/home/lahainalindsay9111/seedstr-builder-agent/.runs/listener.err.log
+
+[Install]
+WantedBy=multi-user.target
