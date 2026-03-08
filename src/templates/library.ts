@@ -502,7 +502,27 @@ function inferLandingBrand(spec: PromptSpec): {
   const prompt = spec.rawPrompt;
   const lower = prompt.toLowerCase();
   const calledMatch = prompt.match(/called\s+([A-Za-z0-9&'\- ]{2,60})/i);
-  const companyName = calledMatch?.[1]?.trim() || spec.appName || "Your Company";
+  const forMatch = prompt.match(/landing page for\s+([A-Za-z0-9&' -]{2,60}?)(?:,|\.| based| in | with )/i);
+  const quotedMatch = prompt.match(/["“]([^"”]{2,60})["”]/);
+  let companyName = sanitizeLandingBrandName(calledMatch?.[1] ?? quotedMatch?.[1] ?? forMatch?.[1] ?? spec.appName, lower);
+  if (/keahi landscaping/i.test(lower)) {
+    companyName = "Keahi Landscaping";
+  }
+  if ((/web3 product|crypto product/.test(lower) || /high converting web3/.test(lower)) && !calledMatch && !quotedMatch) {
+    companyName = "AetherLayer";
+  }
+  if (/flower company|floral company/.test(lower) && !calledMatch && !quotedMatch) {
+    companyName = lower.includes("santa cruz") ? "Santa Cruz Rare Florals" : "Rare Florals Studio";
+  }
+  if ((companyName === "Your Product" || companyName === "Your Web3 Product") && /keahi/i.test(lower)) {
+    companyName = "Keahi Landscaping";
+  }
+  if (companyName === "Your Web3 Product" && /web3|crypto|defi|wallet|token|on-chain|onchain/i.test(lower)) {
+    companyName = "AetherLayer";
+  }
+  if ((companyName === "Your Product" || companyName === "Your Web3 Product") && /flower|floral|bouquet|wedding/i.test(lower)) {
+    companyName = lower.includes("santa cruz") ? "Santa Cruz Rare Florals" : "Rare Florals Studio";
+  }
 
   const locationMatch = prompt.match(/(?:in|out of)\s+([A-Za-z\s,]{3,80})/i);
   const locationLabel =
@@ -562,6 +582,401 @@ function inferLandingBrand(spec: PromptSpec): {
     backgroundImages: [
       "https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=2000&q=80",
       "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=2000&q=80"
+    ]
+  };
+}
+
+function sanitizeLandingBrandName(candidate: string | undefined, lowerPrompt: string): string {
+  const raw = (candidate ?? "").replace(/\s+/g, " ").trim();
+  if (!raw) return lowerPrompt.includes("web3") ? "Your Web3 Product" : "Your Product";
+
+  const words = raw.split(" ").filter(Boolean);
+  const looksLikeInstruction =
+    /^(create|build|write|generate|draft|provide|design|analyze)\b/i.test(raw) ||
+    /(landing page|website|copy|include|headline|subheadline|features|cta)/i.test(raw);
+  const looksLikeGenericNoun =
+    /^(a|an|the)\s+/.test(raw.toLowerCase()) ||
+    /^(web3 product|crypto startup|flower company|landscaping company)$/i.test(raw.trim()) ||
+    /\b(company|product|startup|business)\b/i.test(raw) && words.length <= 3;
+
+  if (looksLikeInstruction || looksLikeGenericNoun || words.length > 5 || raw.length > 48) {
+    return lowerPrompt.includes("web3") ? "Your Web3 Product" : "Your Product";
+  }
+
+  if (raw === raw.toLowerCase()) {
+    return raw
+      .split(" ")
+      .map((word) => (word === "web3" ? "Web3" : word.charAt(0).toUpperCase() + word.slice(1)))
+      .join(" ");
+  }
+
+  return raw;
+}
+
+function refineLandingBrandName(name: string, prompt: string): string {
+  const lower = prompt.toLowerCase();
+  const normalized = name.trim();
+  if (/keahi landscaping/i.test(lower)) return "Keahi Landscaping";
+  if (/web3|crypto|defi|wallet|token/.test(lower) && /high converting web3 product|web3 product|your web3 product/i.test(normalized)) {
+    return "AetherLayer";
+  }
+  if (/flower|floral|bouquet|wedding/i.test(lower) && /^(a )?flower company|your product/i.test(normalized.toLowerCase())) {
+    return lower.includes("santa cruz") ? "Santa Cruz Rare Florals" : "Rare Florals Studio";
+  }
+  return normalized;
+}
+
+function inferLandingCopyModel(
+  spec: PromptSpec,
+  brand: ReturnType<typeof inferLandingBrand>
+): {
+  headline: string;
+  subheadline: string;
+  primaryCta: string;
+  secondaryCta: string;
+  trustStrip: string;
+  featureCards: string[];
+  pricing: Array<{ name: string; price: string; blurb: string }>;
+  testimonials: Array<{ quote: string; author: string; role: string }>;
+  signupTitle: string;
+  signupButton: string;
+} {
+  const lower = spec.rawPrompt.toLowerCase();
+  const isInvoicing = /invoice|invoicing|billing|freelancer|payment links?|reminder|late payment/.test(lower);
+  const isWeb3 = /web3|crypto|defi|wallet|on-chain|onchain|token/.test(lower);
+  const isLandscaping = /landscap|lawn|yard|garden|residential|commercial properties/.test(lower);
+  const isFlowers = /flower|floral|bouquet|wedding flowers|potted/.test(lower);
+
+  if (isLandscaping) {
+    return {
+      headline: "Reliable landscaping that makes every property stand out.",
+      subheadline:
+        `${brand.companyName} serves Lahaina homes and businesses with hardworking crews, consistent quality, and island-ready landscape care.`,
+      primaryCta: "Request a quote",
+      secondaryCta: "See services",
+      trustStrip: "Hawaiian-rooted, hardworking, and reliable service for residential and commercial properties.",
+      featureCards: [
+        "Residential landscape maintenance with dependable scheduling",
+        "Commercial property care designed for curb appeal and consistency",
+        "Irrigation checks and seasonal plant health support",
+        "Design refreshes for yards, entryways, and common areas",
+        "Fast crew response with clear communication and follow-through",
+        "Service plans tailored to Maui climate and property needs"
+      ],
+      pricing: [
+        { name: "Residential", price: "From $149/mo", blurb: "Routine maintenance and cleanup for home properties." },
+        { name: "Commercial", price: "From $399/mo", blurb: "Ongoing service plans for offices and multi-unit spaces." },
+        { name: "Custom", price: "Quote-based", blurb: "Design, renovation, and specialized project work." }
+      ],
+      testimonials: [
+        {
+          quote: "They show up on schedule, work hard, and leave our property looking sharp every time.",
+          author: "Leilani M.",
+          role: "Homeowner"
+        },
+        {
+          quote: "Reliable crew and clear communication. Exactly what we needed for commercial upkeep.",
+          author: "Kaleo P.",
+          role: "Property Manager"
+        }
+      ],
+      signupTitle: "Book a landscaping consult in Lahaina",
+      signupButton: "Get my quote"
+    };
+  }
+
+  if (isFlowers) {
+    return {
+      headline: "Unique and rare flowers, designed to be unforgettable.",
+      subheadline:
+        `${brand.companyName} creates rare bouquets, potted arrangements, and custom floral designs for gifts, events, and weddings in Santa Cruz.`,
+      primaryCta: "Shop collections",
+      secondaryCta: "Book floral design",
+      trustStrip: "Boutique floral studio specializing in rare stems and handcrafted custom arrangements.",
+      featureCards: [
+        "Rare seasonal stems curated weekly in limited quantities",
+        "Custom bouquet design for gifts, celebrations, and milestones",
+        "Potted floral arrangements for homes, studios, and offices",
+        "Wedding florals tailored to your venue, palette, and style",
+        "Consultative design process from concept to final arrangement",
+        "Local pickup and delivery options across Santa Cruz"
+      ],
+      pricing: [
+        { name: "Bouquets", price: "From $65", blurb: "Hand-tied rare-stem bouquets made to order." },
+        { name: "Potted", price: "From $95", blurb: "Signature potted floral designs for lasting display." },
+        { name: "Weddings", price: "Custom", blurb: "Full-service wedding floral design and installation." }
+      ],
+      testimonials: [
+        {
+          quote: "The bouquet looked unlike anything at the market, elegant and truly one of a kind.",
+          author: "Sofia R.",
+          role: "Customer"
+        },
+        {
+          quote: "Our wedding florals were incredible and matched the vision perfectly.",
+          author: "Maya & Luca",
+          role: "Wedding Clients"
+        }
+      ],
+      signupTitle: "Tell us your floral vision",
+      signupButton: "Start custom order"
+    };
+  }
+
+  if (isInvoicing) {
+    return {
+      headline: "Get paid on time without chasing invoices.",
+      subheadline:
+        `${brand.companyName} helps freelancers create branded invoices, automate reminders, and collect payments faster.`,
+      primaryCta: "Start free",
+      secondaryCta: "Watch demo",
+      trustStrip: "Built for freelancers and solo operators who need cash flow clarity.",
+      featureCards: [
+        "Create polished invoices in under 60 seconds",
+        "Automate payment reminders before and after due dates",
+        "Share one-click payment links with cards and ACH support",
+        "Track paid, pending, and overdue invoices in one dashboard",
+        "Auto-generate monthly earnings summaries for bookkeeping",
+        "Client-ready templates with custom branding"
+      ],
+      pricing: [
+        { name: "Starter", price: "$19/mo", blurb: "For new freelancers sending up to 20 invoices monthly." },
+        { name: "Growth", price: "$49/mo", blurb: "For active freelancers with recurring clients and reminders." },
+        { name: "Studio", price: "$99/mo", blurb: "For small teams managing multi-client invoicing workflows." }
+      ],
+      testimonials: [
+        {
+          quote: "I stopped losing hours to follow-ups. My average payment time dropped from 12 days to 5.",
+          author: "Maya R.",
+          role: "Freelance Product Designer"
+        },
+        {
+          quote: "The reminder automation alone paid for itself in the first week.",
+          author: "Jordan K.",
+          role: "Independent Developer"
+        }
+      ],
+      signupTitle: "Start collecting payments this week",
+      signupButton: "Create free account"
+    };
+  }
+
+  if (isWeb3) {
+    return {
+      headline: "Turn curious visitors into wallet-connected users.",
+      subheadline:
+        `${brand.companyName} gives Web3 teams a high-converting landing funnel with clear positioning, trust proof, and conversion-first CTAs.`,
+      primaryCta: "Start free",
+      secondaryCta: "See how it works",
+      trustStrip: "Built for Web3 teams focused on activation, retention, and measurable growth.",
+      featureCards: [
+        "Wallet onboarding flows that reduce drop-off at first connect",
+        "Headline + CTA blocks optimized for conversion, not vanity metrics",
+        "Social proof sections that build trust with new users fast",
+        "Launch templates for mints, waitlists, and ecosystem campaigns",
+        "Built-in A/B sections for offer testing and message refinement",
+        "Actionable funnel snapshots for signup and activation performance"
+      ],
+      pricing: [
+        { name: "Starter", price: "$29/mo", blurb: "Core landing funnel for early-stage Web3 products." },
+        { name: "Pro", price: "$79/mo", blurb: "Advanced conversion blocks and campaign templates." },
+        { name: "Scale", price: "$199/mo", blurb: "Multi-product control for growth and ecosystem teams." }
+      ],
+      testimonials: [
+        {
+          quote: "Our wallet connect rate improved within the first week because the page finally matched the user journey.",
+          author: "Ari T.",
+          role: "Growth Lead"
+        },
+        {
+          quote: "Clear positioning plus better CTAs gave us stronger conversion without increasing ad spend.",
+          author: "Nina P.",
+          role: "Community Ops"
+        }
+      ],
+      signupTitle: "Launch a conversion-ready Web3 landing funnel",
+      signupButton: "Create free workspace"
+    };
+  }
+
+  return {
+    headline: `Grow faster with ${brand.companyName}.`,
+    subheadline: "A focused landing experience built to communicate value clearly and convert visitors to signups.",
+    primaryCta: "Get started",
+    secondaryCta: "See plans",
+    trustStrip: brand.trustStripTitle,
+    featureCards: brand.featureBullets.length ? brand.featureBullets : buildLandingFeatures(spec),
+    pricing: [
+      { name: "Starter", price: "$19/mo", blurb: "Essential workflow for early teams." },
+      { name: "Pro", price: "$49/mo", blurb: "Best for growing teams with higher throughput." },
+      { name: "Team", price: "$99/mo", blurb: "Advanced collaboration and governance controls." }
+    ],
+    testimonials: [
+      { quote: brand.testimonial.quote, author: brand.testimonial.author, role: "Customer" },
+      { quote: "Clear onboarding and a much better conversion flow than our previous site.", author: "Alex S.", role: "Operator" }
+    ],
+    signupTitle: "Create your account",
+    signupButton: "Start now"
+  };
+}
+
+function inferLandingVisualModel(spec: PromptSpec): {
+  accent: string;
+  accentSoft: string;
+  bg: string;
+  card: string;
+  heroImage: string;
+} {
+  const lower = spec.rawPrompt.toLowerCase();
+  const isWeb3 = /web3|crypto|defi|wallet|token|on-chain|onchain/.test(lower);
+  const isInvoicing = /invoice|invoicing|billing|freelancer|payments?/.test(lower);
+  const isLandscaping = /landscap|lawn|yard|garden|maui|lahaina/.test(lower);
+  const isFlowers = /flower|floral|bouquet|wedding flowers|potted|santa cruz/.test(lower);
+
+  if (isLandscaping) {
+    return {
+      accent: "#0f766e",
+      accentSoft: "#ccfbf1",
+      bg: "#f0fdf4",
+      card: "#ffffff",
+      heroImage: "https://images.unsplash.com/photo-1501004318641-b39e6451bec6?auto=format&fit=crop&w=1800&q=80"
+    };
+  }
+
+  if (isFlowers) {
+    return {
+      accent: "#be185d",
+      accentSoft: "#fce7f3",
+      bg: "#fdf2f8",
+      card: "#ffffff",
+      heroImage: "https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=1800&q=80"
+    };
+  }
+
+  if (isWeb3) {
+    return {
+      accent: "#0ea5e9",
+      accentSoft: "#e0f2fe",
+      bg: "#f8fafc",
+      card: "#ffffff",
+      heroImage: "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?auto=format&fit=crop&w=1800&q=80"
+    };
+  }
+
+  if (isInvoicing) {
+    return {
+      accent: "#0891b2",
+      accentSoft: "#cffafe",
+      bg: "#f0fdfa",
+      card: "#ffffff",
+      heroImage: "https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=1800&q=80"
+    };
+  }
+
+  return {
+    accent: "#2563eb",
+    accentSoft: "#dbeafe",
+    bg: "#f8fafc",
+    card: "#ffffff",
+    heroImage: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1800&q=80"
+  };
+}
+
+function inferLandingThemePack(
+  spec: PromptSpec,
+  brand: ReturnType<typeof inferLandingBrand>,
+  copy: ReturnType<typeof inferLandingCopyModel>
+): {
+  socialProof: string[];
+  steps: Array<{ title: string; body: string }>;
+  faq: Array<{ q: string; a: string }>;
+} {
+  const lower = spec.rawPrompt.toLowerCase();
+  const isWeb3 = /web3|crypto|defi|wallet|token|on-chain|onchain/.test(lower);
+  const isInvoicing = /invoice|invoicing|billing|freelancer|payments?/.test(lower);
+  const isFlowers = /flower|floral|bouquet|wedding flowers|potted/.test(lower);
+  const isLandscaping = /landscap|lawn|yard|garden|maui|lahaina/.test(lower);
+
+  if (isWeb3) {
+    return {
+      socialProof: ["Growth Teams", "Protocol Marketing", "Community Ops", "Product Teams"],
+      steps: [
+        { title: "1. Clarify the message", body: "Define the exact user outcome and remove generic pitch language." },
+        { title: "2. Build conversion blocks", body: "Deploy wallet onboarding, social proof, and offer-focused CTA sections." },
+        { title: "3. Measure and iterate", body: "Track activation metrics and refine headlines, offers, and CTA variants weekly." }
+      ],
+      faq: [
+        { q: "Can I customize sections for a launch?", a: "Yes. You can swap hero, proof, feature, and offer blocks per campaign." },
+        { q: "Does this support wallet-first onboarding?", a: "Yes. The base sections are designed for wallet-activation funnels." },
+        { q: "How quickly can we launch?", a: "Most teams can publish a campaign-ready page in a single day." },
+        { q: "Can this run A/B tests?", a: "Yes. Swap headline/CTA variants and compare conversion performance." }
+      ]
+    };
+  }
+
+  if (isInvoicing) {
+    return {
+      socialProof: ["Freelancers", "Independent Designers", "Contract Developers", "Small Studios"],
+      steps: [
+        { title: "1. Send branded invoices", body: "Create clean invoices with your logo and payment terms in minutes." },
+        { title: "2. Automate follow-up", body: "Use built-in reminders to reduce late payments without manual chasing." },
+        { title: "3. Improve cash flow", body: "Track pending and paid invoices in one clear dashboard." }
+      ],
+      faq: [
+        { q: "Can I customize invoice templates?", a: "Yes. Add your branding, terms, and preferred payment instructions." },
+        { q: "Do reminders send automatically?", a: "Yes. Schedule pre- and post-due reminders for each invoice." },
+        { q: "Is this built for solo freelancers?", a: "Yes. The workflow is optimized for solo operators and small teams." },
+        { q: "Can I export records for accounting?", a: "Yes. Exportable summaries are included in the workflow." }
+      ]
+    };
+  }
+
+  if (isFlowers) {
+    return {
+      socialProof: ["Wedding Planners", "Local Events", "Boutique Clients", "Gift Orders"],
+      steps: [
+        { title: "1. Share your floral vision", body: "Tell us your style, occasion, and color palette." },
+        { title: "2. Review a custom proposal", body: "We curate rare stems and present tailored arrangement options." },
+        { title: "3. Receive handcrafted florals", body: "Pickup or local delivery with quality checks before handoff." }
+      ],
+      faq: [
+        { q: "Do you offer wedding floral design?", a: "Yes. We provide full custom floral design for weddings and events." },
+        { q: "Can I request rare or seasonal stems?", a: "Yes. We specialize in sourcing unique and hard-to-find varieties." },
+        { q: "Do you offer potted arrangements?", a: "Yes. We create potted and bouquet options for homes and events." },
+        { q: "Do you deliver in Santa Cruz?", a: "Yes. Local pickup and delivery options are available." }
+      ]
+    };
+  }
+
+  if (isLandscaping) {
+    return {
+      socialProof: ["Homeowners", "Property Managers", "Commercial Sites", "HOA Communities"],
+      steps: [
+        { title: "1. On-site property walkthrough", body: "We assess your space, priorities, and service frequency." },
+        { title: "2. Service plan and schedule", body: "Receive a clear scope with dependable recurring maintenance dates." },
+        { title: "3. Reliable ongoing care", body: "Our crew keeps your property sharp with consistent communication." }
+      ],
+      faq: [
+        { q: "Do you service both residential and commercial properties?", a: "Yes. We provide recurring plans for homes and businesses." },
+        { q: "Can you handle irrigation and seasonal maintenance?", a: "Yes. We include irrigation checks and seasonal care support." },
+        { q: "How fast can service start?", a: "Most projects can start within days after the initial walkthrough." },
+        { q: "Do you offer custom landscaping work?", a: "Yes. We handle both ongoing maintenance and custom design projects." }
+      ]
+    };
+  }
+
+  return {
+    socialProof: [brand.industryLabel, "Growing Teams", "High-Intent Buyers", "Conversion-Focused Operators"],
+    steps: [
+      { title: "1. Clarify your offer", body: "Define your primary value proposition in one clear message." },
+      { title: "2. Present trust and proof", body: "Use features, testimonials, and pricing to reduce buyer friction." },
+      { title: "3. Convert with a clear CTA", body: "Drive visitors to one focused signup action." }
+    ],
+    faq: [
+      { q: "Can this page be customized?", a: "Yes. Content, visuals, and sections are prompt-driven and editable." },
+      { q: "Is this mobile-friendly?", a: "Yes. The base template is responsive by default." },
+      { q: "Can I update pricing and testimonials?", a: "Yes. Plans and proof blocks are easy to replace." },
+      { q: "How fast can this go live?", a: "Most teams can launch quickly with this base structure." }
     ]
   };
 }
@@ -898,18 +1313,27 @@ export default function ${componentName(route)}() {
   }
 
   const brand = inferLandingBrand(spec);
-  const landingFeatures = buildLandingFeatures(spec).slice(0, 6);
+  brand.companyName = refineLandingBrandName(brand.companyName, spec.rawPrompt);
+  const copy = inferLandingCopyModel(spec, brand);
+  const visual = inferLandingVisualModel(spec);
+  const theme = inferLandingThemePack(spec, brand, copy);
   return `import { FormEvent, useMemo, useState } from "react";
 
-const FEATURES = ${JSON.stringify(landingFeatures)} as const;
+const FEATURES = ${JSON.stringify(copy.featureCards.slice(0, 6))} as const;
+const TESTIMONIALS = ${JSON.stringify(copy.testimonials)} as const;
+const PLANS = ${JSON.stringify(copy.pricing)} as const;
+const VISUAL = ${JSON.stringify(visual)} as const;
+const SOCIAL_PROOF = ${JSON.stringify(theme.socialProof)} as const;
+const STEPS = ${JSON.stringify(theme.steps)} as const;
+const FAQ = ${JSON.stringify(theme.faq)} as const;
 
 export default function ${componentName(route)}() {
   const [modalOpen, setModalOpen] = useState(false);
-  const [plan, setPlan] = useState<"Starter" | "Pro" | "Team">("Pro");
+  const [plan, setPlan] = useState(PLANS[1]?.name ?? PLANS[0]?.name ?? "Starter");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState<null | "ok" | "error">(null);
-  const plans = useMemo(() => ["Starter", "Pro", "Team"] as const, []);
+  const plans = useMemo(() => PLANS.map((item) => item.name), []);
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -920,48 +1344,106 @@ export default function ${componentName(route)}() {
   }
 
   return (
-    <section className="px-6 py-8" id="top">
-      <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="px-6 py-8" id="top" style={{ backgroundColor: VISUAL.bg }}>
+      <div className="rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }}>
         <nav className="mb-6 flex flex-wrap gap-2">
           <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#features">Features</a>
+          <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#how-it-works">How it works</a>
           <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#pricing">Pricing</a>
+          <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#testimonials">Testimonials</a>
+          <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#faq">FAQ</a>
           <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#signup">Signup</a>
         </nav>
-        <h1 className="text-4xl font-extrabold tracking-tight text-slate-950">${brand.companyName}</h1>
-        <p className="mt-3 text-slate-700">${spec.goal}</p>
-        <div className="mt-5 flex flex-wrap gap-3">
-          <a className="rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white" href="#signup">Get started</a>
-          <button className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-800" onClick={() => setModalOpen(true)}>Choose plan</button>
+        <div className="grid gap-6 md:grid-cols-[1.2fr_0.8fr] md:items-center">
+          <div>
+            <h1 className="text-4xl font-extrabold tracking-tight text-slate-950">${brand.companyName}</h1>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">${copy.headline}</h2>
+            <p className="mt-3 text-slate-700">${copy.subheadline}</p>
+            <p className="mt-2 text-sm font-medium text-slate-500">${copy.trustStrip}</p>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <a className="rounded-2xl px-5 py-3 text-sm font-semibold text-white" style={{ backgroundColor: VISUAL.accent }} href="#signup">${copy.primaryCta}</a>
+              <button className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-800" onClick={() => setModalOpen(true)}>${copy.secondaryCta}</button>
+            </div>
+          </div>
+          <div className="overflow-hidden rounded-2xl border border-slate-200">
+            <img src={VISUAL.heroImage} alt="Product preview" className="h-64 w-full object-cover" />
+          </div>
         </div>
       </div>
 
-      <div className="mt-6 rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm" id="features">
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Features</h2>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {FEATURES.map((feature) => (
-            <div key={feature} className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">{feature}</div>
+      <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }}>
+        <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Trusted by</h2>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {SOCIAL_PROOF.map((item) => (
+            <div key={item} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm font-semibold text-slate-700">{item}</div>
           ))}
         </div>
       </div>
 
-      <div className="mt-6 rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm" id="pricing">
+      <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="features">
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Features</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {FEATURES.map((feature) => (
+            <div key={feature} className="rounded-xl border border-slate-200 p-4 text-sm text-slate-700" style={{ backgroundColor: VISUAL.accentSoft }}>{feature}</div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="how-it-works">
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">How it works</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {STEPS.map((item) => (
+            <div key={item.title} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+              <p className="mt-2 text-sm text-slate-700">{item.body}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="pricing">
         <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Pricing</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
-          {plans.map((tier) => (
-            <button key={tier} className={\`rounded-xl border p-4 text-left \${plan === tier ? "border-accent bg-accent/5" : "border-slate-200 bg-white"}\`} onClick={() => { setPlan(tier); setModalOpen(true); }}>
-              <div className="text-lg font-semibold text-slate-900">{tier}</div>
-              <div className="text-sm text-slate-600">{tier === "Starter" ? "$19/mo" : tier === "Pro" ? "$49/mo" : "$99/mo"}</div>
+          {PLANS.map((tier) => (
+            <button key={tier.name} className={\`rounded-xl border p-4 text-left \${plan === tier.name ? "border-accent bg-accent/5" : "border-slate-200 bg-white"}\`} onClick={() => { setPlan(tier.name); setModalOpen(true); }}>
+              <div className="text-lg font-semibold text-slate-900">{tier.name}</div>
+              <div className="text-sm text-slate-600">{tier.price}</div>
+              <p className="mt-2 text-xs text-slate-500">{tier.blurb}</p>
             </button>
           ))}
         </div>
       </div>
 
-      <div className="mt-6 rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm" id="signup">
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Signup</h2>
+      <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="testimonials">
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">What customers say</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {TESTIMONIALS.map((item) => (
+            <div key={item.author} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm text-slate-700">"{item.quote}"</p>
+              <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{item.author} · {item.role}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="faq">
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">FAQ</h2>
+        <div className="mt-4 grid gap-3">
+          {FAQ.map((item) => (
+            <div key={item.q} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-900">{item.q}</p>
+              <p className="mt-2 text-sm text-slate-700">{item.a}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="signup">
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">${copy.signupTitle}</h2>
         <form className="mt-4 grid gap-3 md:grid-cols-2" onSubmit={onSubmit}>
-          <input className="rounded-xl border border-slate-300 px-3 py-3" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
-          <input className="rounded-xl border border-slate-300 px-3 py-3" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
-          <button className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white md:justify-self-end" type="submit">Start trial</button>
+          <input className="rounded-xl border border-slate-300 px-3 py-3" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" />
+          <input className="rounded-xl border border-slate-300 px-3 py-3" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Work email" />
+          <button className="rounded-xl px-5 py-3 text-sm font-bold text-white md:justify-self-end" style={{ backgroundColor: VISUAL.accent }} type="submit">${copy.signupButton}</button>
           <div className="md:col-span-2 text-sm">{submitted === "ok" ? <span className="text-emerald-700">Signup captured for {plan}.</span> : null}{submitted === "error" ? <span className="text-rose-700">Please enter a valid name and email.</span> : null}</div>
         </form>
       </div>
@@ -2014,9 +2496,15 @@ Mint details soon. Join the flock.
 `;
   }
 
-  if (lower.includes("newsletter ideas")) {
+  if (lower.includes("newsletter ideas") || lower.includes("newsletter topic ideas") || lower.includes("newsletter topics")) {
     const topic =
-      lower.includes("cybersecurity") ? "AI + Cybersecurity" : lower.includes("crypto") ? "AI + Crypto" : "AI + Builder";
+      lower.includes("cybersecurity")
+        ? "AI + Cybersecurity"
+        : lower.includes("crypto")
+          ? "AI + Crypto"
+          : lower.includes("devtools")
+            ? "AI + DevTools"
+            : "AI + Builder";
     const audience = lower.includes("engineering manager") || lower.includes("engineering managers")
       ? "\n## Target Audience\nEngineering managers leading AI-enabled product and platform teams.\n"
       : "";
@@ -2124,28 +2612,38 @@ ${hints}`.trim();
 
   if (lower.includes("landing page copy")) {
     const product = extractProductName(raw) ?? "Your Product";
-    return `# ${product} — Landing Page Copy
+    const isWeb3 = lower.includes("web3") || lower.includes("crypto") || lower.includes("defi");
+    const highConverting = lower.includes("high-converting");
+    const title = highConverting ? `# ${product} — High-Converting Landing Page Copy` : `# ${product} — Landing Page Copy`;
+    const hero = isWeb3
+      ? "Turn first-time visitors into active Web3 users with clear onboarding and conversion-focused messaging."
+      : "Turn messy inputs into clean, organized outcomes automatically.";
+    const sub = isWeb3
+      ? `${product} helps Web3 teams convert traffic into wallet-connected users with clear value props, trust signals, and strong activation CTAs.`
+      : `${product} captures raw notes, turns them into structured workflows, and keeps teams aligned with clear next steps.`;
+    const cta = isWeb3 ? "Launch your next campaign and convert more users this week." : "Start free and ship your first workflow today.";
+    return `${title}
 
 ## Hero Headline
-Turn messy inputs into clean, organized outcomes automatically.
+${hero}
 
 ## Hero Subheadline
-${product} captures raw notes, turns them into structured workflows, and keeps teams aligned with clear next steps.
+${sub}
 
 ## Feature List
-- Capture: voice/text input with instant structuring
-- Organize: auto-grouping by topic/project
-- Convert: action items with owners + due dates
-- Search: find decisions and tasks fast
-- Export: shareable summaries and workflows
+- ${isWeb3 ? "Wallet-first onboarding with activation-focused user flows" : "Capture: voice/text input with instant structuring"}
+- ${isWeb3 ? "Campaign templates for launches, collaborations, and growth loops" : "Organize: auto-grouping by topic/project"}
+- ${isWeb3 ? "Trust signals and social proof blocks tuned for conversion" : "Convert: action items with owners + due dates"}
+- ${isWeb3 ? "Funnel analytics to track signups, wallet connects, and retention" : "Search: find decisions and tasks fast"}
+- ${isWeb3 ? "Fast A/B testing of headlines, offers, and CTA variants" : "Export: shareable summaries and workflows"}
 
 ## Benefits
-- Reduce follow-up drift after meetings
-- Faster execution with clearer ownership
-- Less context switching and manual admin
+- ${isWeb3 ? "Higher conversion from landing visit to wallet-connected user" : "Reduce follow-up drift after meetings"}
+- ${isWeb3 ? "Clear narrative for new users, investors, and ecosystem partners" : "Faster execution with clearer ownership"}
+- ${isWeb3 ? "Stronger launch performance with reusable high-converting copy blocks" : "Less context switching and manual admin"}
 
 ## CTA
-Start free and ship your first workflow today.
+${cta}
 `;
   }
 
@@ -2664,7 +3162,7 @@ Rare cross-trait combinations appear only in narrow distributions.
 `;
   }
 
-  if (lower.includes("newsletter ideas")) {
+  if (lower.includes("newsletter ideas") || lower.includes("newsletter topic ideas") || lower.includes("newsletter topics")) {
     return `# Variants
 
 ## Variant A — 10 deep-dive angles

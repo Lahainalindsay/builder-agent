@@ -12,18 +12,30 @@ export function attemptBuildRepair(projectDir: string, spec: PromptSpec): Verifi
   const installResult = installDependencies(projectDir);
   if (!installResult.ok) {
     if (isNetworkInstallIssue(installResult.detail)) {
-      return [
+      const lockfileCheck = verifyLockfile(projectDir);
+      const checks: VerificationResult[] = [
         {
           step: "npm-install-network",
           ok: true,
           detail: `Dependency install skipped due to network issue (not project invalid).\n${installResult.detail}`
         },
-        {
+        lockfileCheck
+      ];
+      if (lockfileCheck.ok) {
+        checks.push({
           step: "build-verification-skipped-network",
           ok: true,
           detail: "Build verification deferred because dependency installation could not reach registry/network."
-        }
-      ];
+        });
+      } else {
+        checks.push({
+          step: "build-verification-skipped-network",
+          ok: false,
+          detail: "Build verification skipped due to network and required package-lock.json is missing."
+        });
+      }
+
+      return checks;
     }
     return [
       {
@@ -61,13 +73,11 @@ export function attemptBuildRepair(projectDir: string, spec: PromptSpec): Verifi
 }
 
 function installDependencies(projectDir: string): VerificationResult {
-  const lockfile = path.join(projectDir, "package-lock.json");
-  const command = fs.existsSync(lockfile) ? ["ci"] : ["install"];
-  const result = runCommand("npm", command, projectDir);
+  const installResult = runCommand("npm", ["install", "--no-audit", "--no-fund"], projectDir);
   return {
-    step: `npm ${command[0]}`,
-    ok: result.ok,
-    detail: result.detail
+    step: "npm install",
+    ok: installResult.ok,
+    detail: installResult.detail
   };
 }
 

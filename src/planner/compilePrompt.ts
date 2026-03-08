@@ -169,9 +169,9 @@ function classifyAppType(prompt: string): AppType {
     "cold email",
     "viral tweet thread",
     "tweet thread",
-    "landing page copy",
     "subject line"
   ]);
+  const wantsLandingPage = containsAny(lower, ["landing page", "website"]);
   const listStyleRequest =
     /^(list|list out|what are)\b/.test(lower.trim()) ||
     containsAny(lower, ["required tools", "tool list", "tools for", "what are the required"]);
@@ -226,6 +226,7 @@ function classifyAppType(prompt: string): AppType {
   ]);
 
   if (hasAudit) return "audit";
+  if (wantsLandingPage) return "landing";
   if (listStyleRequest && !appBuildIntent) return "content";
   if (hasContentPack) return "content";
   if (hasGame) return "game";

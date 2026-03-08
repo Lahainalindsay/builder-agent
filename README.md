@@ -114,6 +114,7 @@ npm run dev
 npm run build
 ```
 
+
 ### B) content-pack (non-code deliverables)
 
 Used for prompts like: emails, marketing copy, strategy docs, market analysis, tweet threads, newsletter ideas.
