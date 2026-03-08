@@ -156,18 +156,28 @@ function classifyAppType(prompt: string): AppType {
   ]);
   const hasContentPack = containsAny(lower, [
     "partnership outreach",
+    "partnership proposal",
+    "partnership proposal template",
     "nft collection copy",
     "nft collection",
+    "nft descriptions",
     "marketing copy",
+    "outreach email",
     "newsletter ideas",
     "newsletter topic ideas",
     "newsletter topics",
+    "subject line variations",
     "pitch deck outline",
+    "pitch deck",
     "market analysis",
+    "competitive landscape",
     "ai agent strategy",
     "strategy document",
+    "strategy for",
     "cold email",
+    "cold outreach email",
     "viral tweet thread",
+    "twitter thread",
     "tweet thread",
     "subject line"
   ]);
@@ -443,7 +453,10 @@ function inferFeatures(prompt: string, appType: AppType, pages: RouteSpec[], ent
   if (containsAny(lower, ["export", "csv"])) {
     add("export", "Provide an export action (CSV) for relevant data", "could", "workflow", ["export", "csv"]);
   }
-  if (appType === "form" || containsAny(lower, ["login", "sign in", "signin", "sign up", "signup", "authentication flow"])) {
+  if (
+    appType === "form" ||
+    (appType !== "landing" && containsAny(lower, ["login", "sign in", "signin", "sign up", "signup", "authentication flow"]))
+  ) {
     add("auth-session", "Include a local auth/session stub", "should", "integration", ["auth", "login"]);
   }
 

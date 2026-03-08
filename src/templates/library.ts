@@ -646,6 +646,7 @@ function inferLandingCopyModel(
   const isWeb3 = /web3|crypto|defi|wallet|on-chain|onchain|token/.test(lower);
   const isLandscaping = /landscap|lawn|yard|garden|residential|commercial properties/.test(lower);
   const isFlowers = /flower|floral|bouquet|wedding flowers|potted/.test(lower);
+  const isPlayfulMerch = /joke|fun|sarcastic|comeback|shirt|sticker|meme/.test(lower);
 
   if (isLandscaping) {
     return {
@@ -799,6 +800,44 @@ function inferLandingCopyModel(
     };
   }
 
+  if (isPlayfulMerch) {
+    return {
+      headline: "Say it once. Wear it forever.",
+      subheadline:
+        `${brand.companyName} turns quick comebacks into sarcastic shirts, stickers, and giftable punchlines for people with a sense of humor.`,
+      primaryCta: "Shop punchlines",
+      secondaryCta: "See bestsellers",
+      trustStrip: "Fun-first merch for people who like sharp comebacks and zero small talk.",
+      featureCards: [
+        "Quick comeback generator for instant one-liners",
+        "Limited-run sarcastic shirt drops each week",
+        "Sticker packs sorted by mood: petty, playful, iconic",
+        "Gift bundles for birthdays, office jokes, and friend roasts",
+        "Custom phrase requests for inside jokes and teams",
+        "Fast checkout with mobile-friendly one-tap purchase flow"
+      ],
+      pricing: [
+        { name: "Sticker Pack", price: "$12", blurb: "5 sarcastic vinyl stickers with weatherproof finish." },
+        { name: "Shirt Drop", price: "$28", blurb: "Soft cotton tee with your favorite comeback line." },
+        { name: "Combo Bundle", price: "$39", blurb: "Shirt + sticker pack with limited-edition designs." }
+      ],
+      testimonials: [
+        {
+          quote: "I wore it once and got asked where I bought it three times before lunch.",
+          author: "Rae T.",
+          role: "Customer"
+        },
+        {
+          quote: "Finally, merch that matches my personality in exactly five words.",
+          author: "Devon K.",
+          role: "Repeat Buyer"
+        }
+      ],
+      signupTitle: "Get first access to the next sarcastic drop",
+      signupButton: "Join the waitlist"
+    };
+  }
+
   return {
     headline: `Grow faster with ${brand.companyName}.`,
     subheadline: "A focused landing experience built to communicate value clearly and convert visitors to signups.",
@@ -832,6 +871,7 @@ function inferLandingVisualModel(spec: PromptSpec): {
   const isInvoicing = /invoice|invoicing|billing|freelancer|payments?/.test(lower);
   const isLandscaping = /landscap|lawn|yard|garden|maui|lahaina/.test(lower);
   const isFlowers = /flower|floral|bouquet|wedding flowers|potted|santa cruz/.test(lower);
+  const isPlayfulMerch = /joke|fun|sarcastic|comeback|shirt|sticker|meme/.test(lower);
 
   if (isLandscaping) {
     return {
@@ -860,6 +900,16 @@ function inferLandingVisualModel(spec: PromptSpec): {
       bg: "#f8fafc",
       card: "#ffffff",
       heroImage: "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?auto=format&fit=crop&w=1800&q=80"
+    };
+  }
+
+  if (isPlayfulMerch) {
+    return {
+      accent: "#db2777",
+      accentSoft: "#fce7f3",
+      bg: "#fff7ed",
+      card: "#ffffff",
+      heroImage: "https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?auto=format&fit=crop&w=1800&q=80"
     };
   }
 
@@ -896,6 +946,7 @@ function inferLandingThemePack(
   const isInvoicing = /invoice|invoicing|billing|freelancer|payments?/.test(lower);
   const isFlowers = /flower|floral|bouquet|wedding flowers|potted/.test(lower);
   const isLandscaping = /landscap|lawn|yard|garden|maui|lahaina/.test(lower);
+  const isPlayfulMerch = /joke|fun|sarcastic|comeback|shirt|sticker|meme/.test(lower);
 
   if (isWeb3) {
     return {
@@ -961,6 +1012,23 @@ function inferLandingThemePack(
         { q: "Can you handle irrigation and seasonal maintenance?", a: "Yes. We include irrigation checks and seasonal care support." },
         { q: "How fast can service start?", a: "Most projects can start within days after the initial walkthrough." },
         { q: "Do you offer custom landscaping work?", a: "Yes. We handle both ongoing maintenance and custom design projects." }
+      ]
+    };
+  }
+
+  if (isPlayfulMerch) {
+    return {
+      socialProof: ["Creators", "Gift Shoppers", "Meme Lovers", "Inside-Joke Experts"],
+      steps: [
+        { title: "1. Pick your mood", body: "Choose playful, petty, chaotic, or clean sarcasm." },
+        { title: "2. Choose your format", body: "Drop your line on a shirt, sticker pack, or both." },
+        { title: "3. Ship the punchline", body: "Checkout fast and wear your comeback with confidence." }
+      ],
+      faq: [
+        { q: "Can I request a custom comeback line?", a: "Yes. Custom line requests are supported for selected products." },
+        { q: "Do you restock sold-out designs?", a: "Popular drops return occasionally, but many designs stay limited edition." },
+        { q: "Are stickers weatherproof?", a: "Yes. Sticker packs are printed on durable weatherproof vinyl." },
+        { q: "Is this meant to be serious?", a: "No. The whole brand is intentionally fun and sarcastic." }
       ]
     };
   }
@@ -2353,6 +2421,13 @@ function toTitle(s: string): string {
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
+function extractRequestedCount(prompt: string, fallback: number): number {
+  const match = prompt.match(/\b(\d{1,2})\b/);
+  const value = match ? Number(match[1]) : fallback;
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(3, Math.min(30, value));
+}
+
 function contentPackMain(spec: PromptSpec): string {
   const assistedMain = spec.llmAssist?.main?.trim();
   if (assistedMain) return `${assistedMain}\n`;
@@ -2497,6 +2572,8 @@ Mint details soon. Join the flock.
   }
 
   if (lower.includes("newsletter ideas") || lower.includes("newsletter topic ideas") || lower.includes("newsletter topics")) {
+    const itemCount = extractRequestedCount(lower, 20);
+    const includeSubjectLines = lower.includes("subject line");
     const topic =
       lower.includes("cybersecurity")
         ? "AI + Cybersecurity"
@@ -2509,28 +2586,44 @@ Mint details soon. Join the flock.
       ? "\n## Target Audience\nEngineering managers leading AI-enabled product and platform teams.\n"
       : "";
 
-    return `# 20 Newsletter Ideas: ${topic}
+    const ideas = [
+      "Toolchain of the Week",
+      "Build Log teardown",
+      "Security pitfall of the week",
+      "Benchmarks: latency vs quality vs cost",
+      "Agent eval harness template",
+      "Top OSS updates worth pulling",
+      "Incident review: failure mode + fix",
+      "Workflow automation pattern",
+      "API spotlight with practical use-case",
+      "Hot take + rebuttal",
+      "Integration guide (X to Y)",
+      "DevEx bottleneck breakdown",
+      "Prompt patterns that actually work",
+      "Observability guardrail pattern",
+      "Customer workflow ROI story",
+      "Security checklist for tool-using agents",
+      "Release roundup: models and SDKs",
+      "Testing patterns in production",
+      "Weekend mini-project prompt",
+      "Challenge prompt + scoring rubric",
+      "Postmortem lesson of the week",
+      "Cost-control tactic for agent stacks",
+      "Deployment checklist for reliability",
+      "Architecture teardown: one workflow",
+      "Team process upgrade with AI"
+    ];
+    const selected = ideas.slice(0, itemCount);
+    const rendered = selected
+      .map((title, index) => {
+        if (!includeSubjectLines) return `${index + 1}. ${title}`;
+        return `${index + 1}. ${title}\n   - Subject: ${title}: What changed this week`;
+      })
+      .join("\n");
 
-1. Toolchain of the Week (what changed + why it matters)
-2. “Build Log” teardown: shipping an agent feature end-to-end
-3. Security pitfall of the week + how to avoid it
-4. Benchmarks: latency vs quality vs cost
-5. Agent eval harness template (with a tiny example)
-6. Top OSS updates worth pulling this week
-7. Incident review: a failure mode and the fix
-8. Workflow automation patterns (practical, copyable)
-9. API spotlight: one endpoint and a real use-case
-10. “Hot take” + rebuttal (balanced discussion)
-11. Integration guide: connecting X to Y safely
-12. DevEx: onboarding friction and how to reduce it
-13. Prompt patterns that work (and why)
-14. Observability: logs, traces, and guardrails
-15. Customer story: what they automated and ROI
-16. Security checklist for tool-using agents
-17. Release roundup: models/SDKs/infra
-18. Testing patterns for agents in production
-19. “What I’d build this weekend” mini-project
-20. Challenge prompt of the week (with rubric)
+    return `# ${itemCount} Newsletter Ideas: ${topic}
+
+${rendered}
 
 ## Suggested Cadence
 - Mon: signals + roundup
@@ -2570,7 +2663,7 @@ ${audience}
 ${hints}`.trim();
   }
 
-  if (lower.includes("strategy document") || lower.includes("ai agent strategy")) {
+  if (lower.includes("strategy document") || lower.includes("ai agent strategy") || lower.includes("strategy for")) {
     const marketplace =
       lower.includes("customer-support") || lower.includes("customer support")
         ? "autonomous customer-support marketplace"
@@ -2647,8 +2740,23 @@ ${cta}
 `;
   }
 
-  if (lower.includes("tweet thread") || lower.includes("10-tweet")) {
-    return `# 10-Tweet Thread: Why Agentic Workflows Will Reshape Startup Operations
+  if (lower.includes("tweet thread") || lower.includes("twitter thread") || lower.includes("10-tweet")) {
+    if (lower.includes("crypto") || lower.includes("defi") || lower.includes("web3")) {
+      return `# Twitter Thread (10 Tweets): Latest AI Trends in Crypto (with Hook + CTA)
+
+1) Crypto is entering its AI tooling era, and most teams are still underestimating the speed of change.  
+2) The biggest shift: AI is moving from “content helper” to “execution layer” for research, ops, and community growth.  
+3) Trend #1: AI copilots for on-chain analytics are reducing research time from hours to minutes.  
+4) Trend #2: Agent-assisted community ops now handles moderation, FAQs, and campaign iteration at scale.  
+5) Trend #3: Wallet onboarding copy is being continuously optimized with AI-driven conversion testing.  
+6) Trend #4: Risk monitoring bots are surfacing suspicious flows faster than manual analyst workflows.  
+7) Trend #5: Teams with strong eval + guardrails are outperforming teams using random prompt stacks.  
+8) Biggest mistake right now? Chasing novelty instead of measurable activation and retention outcomes.  
+9) If you run a crypto product, start with one repeatable workflow and instrument it aggressively.  
+10) Want the exact playbook we use for AI + crypto growth loops? Reply “PLAYBOOK” and I’ll share it.
+`;
+    }
+    return `# Twitter Thread (10 Tweets): Why Agentic Workflows Will Reshape Startup Operations
 
 1) Startups don’t fail from lack of ideas; they fail from execution drag.  
 2) Agentic workflows compress that drag by automating “glue work.”  
@@ -2663,7 +2771,7 @@ ${cta}
 `;
   }
 
-  if (lower.includes("partnership outreach")) {
+  if (lower.includes("partnership outreach") || lower.includes("partnership proposal")) {
     return `# Partnership Outreach Package
 
 ## Subject Line Options
@@ -2707,8 +2815,8 @@ Best,
 `;
   }
 
-  if (lower.includes("cold email")) {
-    return `# Cold Email: Demo Booking
+  if (lower.includes("cold email") || lower.includes("cold outreach email")) {
+    return `# Cold Outreach Email: Demo Booking
 
 ## Subject Lines
 - Quick idea to save your team 6-10 hrs/week
@@ -2827,7 +2935,7 @@ function contentPackVariants(spec: PromptSpec): string {
   const raw = spec.rawPrompt.trim();
   const lower = raw.toLowerCase();
 
-  if (lower.includes("strategy document") || lower.includes("ai agent strategy")) {
+  if (lower.includes("strategy document") || lower.includes("ai agent strategy") || lower.includes("strategy for")) {
     const domain =
       lower.includes("customer-support") || lower.includes("customer support")
         ? "customer-support marketplace"
@@ -2929,7 +3037,7 @@ CTA emphasizes measurable improvement.
 `;
   }
 
-  if (lower.includes("partnership outreach")) {
+  if (lower.includes("partnership outreach") || lower.includes("partnership proposal")) {
     return `# Variants: Partnership Outreach
 
 ## Variant A - Compliance-led (enterprise tone)
@@ -2983,7 +3091,7 @@ Best,
 `;
   }
 
-  if (lower.includes("cold email")) {
+  if (lower.includes("cold email") || lower.includes("cold outreach email")) {
     return `# Variants: Cold Email (Demo Booking)
 
 ## Variant A - Problem-first
@@ -3038,7 +3146,7 @@ Best,
 `;
   }
 
-  if (lower.includes("tweet thread") || lower.includes("10-tweet") || lower.includes("10 tweet")) {
+  if (lower.includes("tweet thread") || lower.includes("twitter thread") || lower.includes("10-tweet") || lower.includes("10 tweet")) {
     return `# Variants: Tweet Thread
 
 ## Variant A - Contrarian

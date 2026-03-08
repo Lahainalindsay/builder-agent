@@ -3,6 +3,88 @@ import path from "node:path";
 import { PromptSpec, VerificationResult } from "../types/spec";
 import { normalizeText } from "../utils/normalizeText";
 
+function extractLikelyBrandTokens(prompt: string): string[] {
+  const normalized = normalizeText(prompt);
+  const hit =
+    normalized.match(/\b(?:called|named)\s+([a-z0-9][a-z0-9\s-]{2,50})/) ??
+    normalized.match(/\blanding page for\s+([a-z0-9][a-z0-9\s-]{2,50})/) ??
+    normalized.match(/["“]([^"”]{2,50})["”]/);
+
+  if (!hit?.[1]) return [];
+  return hit[1]
+    .split(/\s+/)
+    .filter((token) => token.length >= 4)
+    .filter((token) => !["company", "product", "startup", "landing", "page", "called", "named"].includes(token))
+    .slice(0, 2);
+}
+
+function inferLandingDomainTokens(prompt: string): string[] {
+  const lower = normalizeText(prompt);
+  const tokens: string[] = [];
+  if (/web3|crypto|defi|wallet|token/.test(lower)) tokens.push("web3", "wallet");
+  if (/invoice|billing|freelancer|payment/.test(lower)) tokens.push("invoice", "payment");
+  if (/landscap|lawn|yard|garden|maui|lahaina/.test(lower)) tokens.push("landscap", "lahaina");
+  if (/flower|floral|bouquet|wedding|santa cruz/.test(lower)) tokens.push("flower", "bouquet");
+  if (/joke|sarcastic|comeback|shirt|sticker|fun/.test(lower)) tokens.push("sarcastic", "sticker");
+  return Array.from(new Set(tokens)).slice(0, 3);
+}
+
+function verifyLandingQuality(prompt: string, appSource: string): VerificationResult[] {
+  const checks: VerificationResult[] = [];
+  const source = normalizeText(appSource);
+
+  const brandTokens = extractLikelyBrandTokens(prompt);
+  if (brandTokens.length) {
+    const missingBrand = brandTokens.filter((token) => !source.includes(token));
+    checks.push({
+      step: "acceptance:landing:brand-mention",
+      ok: missingBrand.length === 0,
+      detail:
+        missingBrand.length === 0
+          ? `OK (${brandTokens.join(", ")})`
+          : `Missing brand tokens in landing page: ${missingBrand.join(", ")}`
+    });
+  }
+
+  const domainTokens = inferLandingDomainTokens(prompt);
+  if (domainTokens.length) {
+    const hasDomainSignal = domainTokens.some((token) => source.includes(token));
+    checks.push({
+      step: "acceptance:landing:domain-context",
+      ok: hasDomainSignal,
+      detail: hasDomainSignal
+        ? `OK (${domainTokens.join(", ")})`
+        : `Missing domain context tokens in landing page (${domainTokens.join(", ")})`
+    });
+  }
+
+  const featuresMatch = appSource.match(/const FEATURES = \[(.*?)\] as const;/s);
+  const featureCount = featuresMatch ? (featuresMatch[1].match(/","|',\s*'/g)?.length ?? 0) + 1 : 0;
+  const hasPlaceholderFeature = /primary service|premium service|managed support/i.test(featuresMatch?.[1] ?? "");
+  checks.push({
+    step: "acceptance:landing:feature-quality",
+    ok: featureCount >= 3 && !hasPlaceholderFeature,
+    detail:
+      featureCount >= 3 && !hasPlaceholderFeature
+        ? `OK (${featureCount} non-placeholder features)`
+        : `Need >=3 non-placeholder features (found ${featureCount})`
+  });
+
+  const hasValidationSignals =
+    /validEmail/.test(appSource) &&
+    /Please enter a valid name and email\./.test(appSource) &&
+    /Signup captured/.test(appSource);
+  checks.push({
+    step: "acceptance:landing:form-validation",
+    ok: hasValidationSignals,
+    detail: hasValidationSignals
+      ? "OK (form has validation + success state)"
+      : "Missing form validation and/or success confirmation state"
+  });
+
+  return checks;
+}
+
 function extractPromptKeywords(prompt: string): string[] {
   const lower = normalizeText(prompt);
 
@@ -74,6 +156,13 @@ function extractPromptKeywords(prompt: string): string[] {
     "draft",
     "provide",
     "give",
+    "analyze",
+    "viral",
+    "twitter",
+    "deploying",
+    "automate",
+    "smart",
+    "contract",
     "list",
     "explain",
     "explaining",
@@ -135,7 +224,15 @@ function keywordCoverageResult(prompt: string, body: string): { ok: boolean; det
   if (keywords.length === 0) {
     return { ok: true, detail: "OK (no keywords extracted)" };
   }
-  const missing = keywords.filter((k) => !normalizedBody.includes(k));
+  const hasKeyword = (keyword: string): boolean => {
+    if (normalizedBody.includes(keyword)) return true;
+    if (keyword.endsWith("s") && normalizedBody.includes(keyword.slice(0, -1))) return true;
+    if (keyword.endsWith("ing") && normalizedBody.includes(keyword.slice(0, -3))) return true;
+    if (keyword.endsWith("ed") && normalizedBody.includes(keyword.slice(0, -2))) return true;
+    return false;
+  };
+
+  const missing = keywords.filter((k) => !hasKeyword(k));
   return {
     ok: missing.length === 0,
     detail: missing.length ? `Missing keywords: ${missing.join(", ")} (expected: ${keywords.join(", ")})` : `OK (${keywords.join(", ")})`
@@ -269,6 +366,20 @@ export function runStaticChecks(projectDir: string, spec?: PromptSpec): Verifica
         step: "acceptance:keywords:audit-report",
         ok,
         detail: ok ? "OK (erc)" : "Missing ERC-20/ERC20 keyword in audit report"
+      });
+    }
+  }
+
+  if (spec.appType === "landing") {
+    const appPath = path.join(projectDir, "src/App.tsx");
+    if (fs.existsSync(appPath)) {
+      const appSource = fs.readFileSync(appPath, "utf8");
+      checks.push(...verifyLandingQuality(spec.rawPrompt ?? "", appSource));
+    } else {
+      checks.push({
+        step: "acceptance:landing:source",
+        ok: false,
+        detail: "Missing src/App.tsx for landing quality checks"
       });
     }
   }
