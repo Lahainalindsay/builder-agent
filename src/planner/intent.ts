@@ -13,39 +13,66 @@ const SECTION_HINTS = [
   "featured",
   "featured products",
   "feature grid",
+  "cards",
+  "flavor cards",
+  "highlights",
+  "nutrition highlights",
+  "benefits",
   "services",
   "services grid",
   "pricing",
   "pricing tiers",
+  "plans",
+  "tiers",
   "testimonials",
   "testimonial",
+  "reviews",
+  "customer reviews",
+  "ratings",
   "faq",
+  "faqs",
+  "q&a",
   "questions",
   "signup",
   "sign up",
+  "email signup",
+  "email signup form",
+  "newsletter",
+  "join email list",
   "email capture",
   "cta",
   "call to action",
   "booking form",
   "form",
   "social proof",
+  "trusted by",
+  "logos",
+  "as seen in",
+  "press",
   "timeline",
   "installation timeline",
   "how it works"
 ];
 
 function normalizeSection(value: string): string {
-  const v = cleanPhrase(value.toLowerCase().replace(/["“”]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " "));
+  const v = cleanPhrase(value.toLowerCase().replace(/["“”']/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " "));
   if (!v) return v;
   if (v.includes("social proof") || v.includes("trusted by")) return "social_proof";
+  if (v.includes("logos") || v.includes("as seen in") || v.includes("press")) return "social_proof";
   if (v.includes("email capture") || v.includes("signup") || v.includes("sign up")) return "email_signup";
+  if (v.includes("newsletter") || v.includes("join email list")) return "email_signup";
   if (v.includes("booking") || v.includes("schedule") || v.includes("book a call")) return "booking";
   if (v.includes("feature") || v.includes("featured products")) return "featured_products";
+  if (v.includes("cards") || v.includes("flavor")) return "featured_products";
+  if (v.includes("highlights") || v.includes("benefits") || v.includes("nutrition")) return "featured_products";
   if (v.includes("services")) return "featured_products";
   if (v.includes("how it works") || v.includes("process") || v.includes("steps")) return "how_it_works";
   if (v.includes("pricing")) return "pricing";
+  if (v.includes("plan") || v.includes("tier")) return "pricing";
   if (v.includes("testimonial")) return "testimonials";
+  if (v.includes("reviews") || v.includes("ratings") || v.includes("what customers say")) return "testimonials";
   if (v.includes("faq")) return "faq";
+  if (v.includes("q a") || v.includes("questions")) return "faq";
   if (v.includes("hero")) return "hero";
   if (v.includes("care tips")) return "care_tips";
   return v.replace(/\s+/g, "_");
@@ -67,7 +94,7 @@ function cleanPhrase(input: string): string {
 }
 
 function isSectionPhrase(value: string): boolean {
-  const normalized = cleanPhrase(value.toLowerCase().replace(/["“”]/g, ""));
+  const normalized = cleanPhrase(value.toLowerCase().replace(/["“”']/g, ""));
   if (!normalized) return false;
   if (/^(section|block)\s+/.test(normalized)) return true;
   if (/\bsection\b/.test(normalized)) return true;
@@ -82,7 +109,7 @@ function titleCaseWordCount(value: string): number {
 }
 
 function extractBrandName(raw: string): string | undefined {
-  const quoted = raw.match(/["“]([^"”]{2,60})["”]/);
+  const quoted = raw.match(/["“]([^"”]{2,60})["”]/) ?? raw.match(/'([^']{2,60})'/);
   if (quoted?.[1]) return quoted[1].trim();
 
   const called = raw.match(/\b(?:called|named)\s+([A-Za-z0-9&'’\- ]{2,60})/i);

@@ -33,6 +33,11 @@ function splitList(input: string): string[] {
     .filter((item) => item.length > 0);
 }
 
+function extractDelimitedList(prompt: string, pattern: RegExp, cap = 14): string[] {
+  const hit = prompt.match(pattern)?.[1] ?? "";
+  return splitList(hit).slice(0, cap);
+}
+
 function detectDeliverable(lower: string): AppType | null {
   if (/audit|security review|smart contract|erc-20|erc20|vulnerab/.test(lower)) return "audit";
   if (/landing page|website|marketing page/.test(lower)) return "landing";
@@ -74,6 +79,7 @@ export function parsePromptStructure(rawPrompt: string): PromptStructure {
 
   const subjectName =
     rawPrompt.match(/for\s+["“]([^"”]{2,80})["”]/i)?.[1]?.trim() ??
+    rawPrompt.match(/for\s+'([^']{2,80})'/i)?.[1]?.trim() ??
     rawPrompt.match(/\bfor\s+([A-Za-z0-9&' -]{2,80})(?=,|\s+(?:a|an)\s+|\.|\n|$)/i)?.[1]?.trim() ??
     null;
 
@@ -87,8 +93,16 @@ export function parsePromptStructure(rawPrompt: string): PromptStructure {
     "";
   const brandTone = splitList(brandToneRaw).slice(0, 6);
 
-  const includeRaw = rawPrompt.match(/include(?:s)?\s+([^.\n]+)/i)?.[1] ?? "";
-  const includeItems = splitList(includeRaw).slice(0, 12);
+  const includeItems = Array.from(
+    new Set(
+      [
+        ...extractDelimitedList(rawPrompt, /include(?:s|d|ing)?\s*:?\s*([^.\n]+)/i, 12),
+        ...extractDelimitedList(rawPrompt, /\bwith\s+([^.\n]+)/i, 12)
+      ]
+        .map((item) => item.trim())
+        .filter(Boolean)
+    )
+  ).slice(0, 14);
 
   const pagesRaw = rawPrompt.match(/pages?\s*:\s*([^.\n]+)/i)?.[1] ?? "";
   const pageItems = splitList(pagesRaw).slice(0, 10);

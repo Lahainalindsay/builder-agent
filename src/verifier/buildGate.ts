@@ -8,7 +8,8 @@ function extractLikelyBrandTokens(prompt: string): string[] {
   const hit =
     normalized.match(/\b(?:called|named)\s+([a-z0-9][a-z0-9\s-]{2,50})/) ??
     normalized.match(/\blanding page for\s+([a-z0-9][a-z0-9\s-]{2,50})/) ??
-    normalized.match(/["“]([^"”]{2,50})["”]/);
+    normalized.match(/["“]([^"”]{2,50})["”]/) ??
+    normalized.match(/'([^']{2,50})'/);
 
   if (!hit?.[1]) return [];
   return hit[1]
@@ -18,9 +19,35 @@ function extractLikelyBrandTokens(prompt: string): string[] {
     .slice(0, 2);
 }
 
+function extractExpectedBrandName(prompt: string): string | null {
+  const normalized = normalizeText(prompt);
+  const isLikelyBrand = (value: string): boolean => {
+    const cleaned = value.trim();
+    if (!cleaned) return false;
+    if (/^(a|an|the)\b/.test(cleaned)) return false;
+    const words = cleaned.split(/\s+/).filter(Boolean);
+    if (words.length > 3) return false;
+    if (/\b(product|company|startup|service|tool|website|landing page|app)\b/.test(cleaned)) return false;
+    if (/\bwith\b/.test(cleaned)) return false;
+    return true;
+  };
+
+  const quoted = (
+    normalized.match(/["“]([^"”]{2,70})["”]/) ??
+    normalized.match(/'([^']{2,70})'/)
+  )?.[1]?.trim();
+  if (quoted && isLikelyBrand(quoted)) return quoted;
+  const called = normalized.match(/\b(?:called|named)\s+([a-z0-9][a-z0-9\s-]{2,70})/)?.[1]?.trim();
+  if (called && isLikelyBrand(called)) return called;
+  const forMatch = normalized.match(/\bfor\s+([a-z0-9][a-z0-9\s-]{2,70}?)(?=,|\s+\(|\s+(?:a|an|the)\b|\.|$)/)?.[1]?.trim();
+  if (forMatch && isLikelyBrand(forMatch)) return forMatch;
+  return null;
+}
+
 function inferLandingDomainTokens(prompt: string): string[] {
   const lower = normalizeText(prompt);
   const tokens: string[] = [];
+  if (/soda|drink|beverage|flavor|nutrition|ingredient|calorie/.test(lower)) tokens.push("flavor", "nutrition", "drink");
   if (/web3|crypto|defi|wallet|token/.test(lower)) tokens.push("web3", "wallet");
   if (/invoice|billing|freelancer|payment/.test(lower)) tokens.push("invoice", "payment");
   if (/moving|mover|storage|relocation|packing|unpacking|haul/.test(lower)) tokens.push("moving", "storage");
@@ -36,6 +63,18 @@ function verifyLandingQuality(prompt: string, appSource: string): VerificationRe
   const promptLower = normalizeText(prompt);
 
   const brandTokens = extractLikelyBrandTokens(prompt);
+  const exactBrand = extractExpectedBrandName(prompt);
+  if (exactBrand) {
+    const normalizedBrand = normalizeText(exactBrand);
+    checks.push({
+      step: "acceptance:landing:brand-exact-mention",
+      ok: source.includes(normalizedBrand),
+      detail: source.includes(normalizedBrand)
+        ? `OK (${exactBrand})`
+        : `Missing exact brand mention in landing page: ${exactBrand}`
+    });
+  }
+
   if (brandTokens.length) {
     const missingBrand = brandTokens.filter((token) => !source.includes(token));
     checks.push({
@@ -105,6 +144,7 @@ function verifyLandingQuality(prompt: string, appSource: string): VerificationRe
     "convert with a clear cta",
     "a focused landing experience built to communicate value clearly",
     "your product",
+    "your web3 product",
     "happy customer"
   ];
   const scaffoldHits = bannedScaffoldPhrases.filter((phrase) => source.includes(phrase));
