@@ -90,8 +90,86 @@ export interface PromptSpec {
   niceToHave: string[];
   constraints: string[];
   assumptions: string[];
+  intent?: PromptIntent;
+  promptStructure?: PromptStructure;
   llmAssist?: ContentLlmAssist;
   acceptanceChecks: AcceptanceCheck[];
+}
+
+export type DeliverableType =
+  | "landing_page"
+  | "tweet_thread"
+  | "email"
+  | "pitch_deck"
+  | "newsletter_ideas"
+  | "market_analysis"
+  | "audit_report"
+  | "dashboard_app"
+  | "crud_app"
+  | "viz_app"
+  | "docs_app"
+  | "game_app"
+  | "story_app"
+  | "unknown";
+
+export type AudienceType =
+  | "freelancers"
+  | "real_estate_agents"
+  | "developer_team"
+  | "finance_team"
+  | "support_team"
+  | "founders"
+  | "general";
+
+export type DomainType =
+  | "invoicing"
+  | "accounting"
+  | "real_estate"
+  | "devtools"
+  | "customer_support"
+  | "crypto_web3"
+  | "ecommerce"
+  | "moving_storage"
+  | "landscaping"
+  | "floral"
+  | "generic";
+
+export interface PromptIntent {
+  deliverable: DeliverableType;
+  audience: AudienceType;
+  domain: DomainType;
+  goal?: "conversion" | "informational" | "portfolio";
+  primaryAction?: "shop" | "email_signup" | "book" | "contact" | "learn_more";
+  secondaryAction?: "shop" | "email_signup" | "book" | "contact" | "learn_more";
+  audienceSegments?: string[];
+  audienceDetail?: string;
+  brandStyle?: string[];
+  brandName?: string;
+  productType?: string;
+  subject?: string;
+  requirements: string[];
+  sections: string[];
+  normalizedSections?: string[];
+  tone?: "direct" | "friendly" | "professional" | "hype" | "technical";
+}
+
+export interface ClauseIntent {
+  verb: string;
+  object: string;
+  clause: string;
+}
+
+export interface PromptStructure {
+  normalizedPrompt: string;
+  intents: ClauseIntent[];
+  deliverableHint: AppType | null;
+  subjectName: string | null;
+  subjectDescriptor: string | null;
+  audience: string | null;
+  brandTone: string[];
+  includeItems: string[];
+  pageItems: string[];
+  domainKeywords: string[];
 }
 
 export interface ContentLlmAssist {

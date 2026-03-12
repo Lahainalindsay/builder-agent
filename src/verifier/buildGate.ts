@@ -23,7 +23,8 @@ function inferLandingDomainTokens(prompt: string): string[] {
   const tokens: string[] = [];
   if (/web3|crypto|defi|wallet|token/.test(lower)) tokens.push("web3", "wallet");
   if (/invoice|billing|freelancer|payment/.test(lower)) tokens.push("invoice", "payment");
-  if (/landscap|lawn|yard|garden|maui|lahaina/.test(lower)) tokens.push("landscap", "lahaina");
+  if (/moving|mover|storage|relocation|packing|unpacking|haul/.test(lower)) tokens.push("moving", "storage");
+  if (/landscap|lawn|yard|garden/.test(lower)) tokens.push("landscap");
   if (/flower|floral|bouquet|wedding|santa cruz/.test(lower)) tokens.push("flower", "bouquet");
   if (/joke|sarcastic|comeback|shirt|sticker|fun/.test(lower)) tokens.push("sarcastic", "sticker");
   return Array.from(new Set(tokens)).slice(0, 3);
@@ -32,6 +33,7 @@ function inferLandingDomainTokens(prompt: string): string[] {
 function verifyLandingQuality(prompt: string, appSource: string): VerificationResult[] {
   const checks: VerificationResult[] = [];
   const source = normalizeText(appSource);
+  const promptLower = normalizeText(prompt);
 
   const brandTokens = extractLikelyBrandTokens(prompt);
   if (brandTokens.length) {
@@ -59,6 +61,17 @@ function verifyLandingQuality(prompt: string, appSource: string): VerificationRe
   }
 
   const featuresMatch = appSource.match(/const FEATURES = \[(.*?)\] as const;/s);
+  const isPlantFloralPrompt = /plant|houseplant|succulent|bouquet|flowers?|floral|nursery/.test(promptLower);
+  if (isPlantFloralPrompt) {
+    const plantWhitelist = ["plant", "delivery", "care", "bouquet", "subscription", "succulent", "local", "pickup", "gift"];
+    const featuresScope = (featuresMatch?.[1] ?? "").toLowerCase();
+    const hits = plantWhitelist.filter((token) => featuresScope.includes(token));
+    checks.push({
+      step: "acceptance:landing:domain-specificity",
+      ok: hits.length >= 3,
+      detail: hits.length >= 3 ? `OK (${hits.join(", ")})` : `Need >=3 plant/floral terms in FEATURES, found ${hits.length} (${hits.join(", ") || "none"})`
+    });
+  }
   const featureCount = featuresMatch ? (featuresMatch[1].match(/","|',\s*'/g)?.length ?? 0) + 1 : 0;
   const hasPlaceholderFeature = /primary service|premium service|managed support/i.test(featuresMatch?.[1] ?? "");
   checks.push({
@@ -82,11 +95,95 @@ function verifyLandingQuality(prompt: string, appSource: string): VerificationRe
       : "Missing form validation and/or success confirmation state"
   });
 
+  const bannedScaffoldPhrases = [
+    "local-first item management",
+    "build a landing page for",
+    "this prompt",
+    "your company",
+    "clarify your offer",
+    "present trust and proof",
+    "convert with a clear cta",
+    "a focused landing experience built to communicate value clearly",
+    "your product",
+    "happy customer"
+  ];
+  const scaffoldHits = bannedScaffoldPhrases.filter((phrase) => source.includes(phrase));
+  checks.push({
+    step: "acceptance:landing:no-scaffold-copy",
+    ok: scaffoldHits.length === 0,
+    detail:
+      scaffoldHits.length === 0
+        ? "OK"
+        : `Scaffold phrases detected: ${scaffoldHits.join(", ")}`
+  });
+
+  const isInvoicingPrompt = /invoice|invoicing|billing|freelancer|payment/.test(promptLower);
+  if (isInvoicingPrompt) {
+    const invoicingTokens = [
+      "invoice",
+      "invoic",
+      "overdue",
+      "reminder",
+      "payment link",
+      "payment",
+      "ach",
+      "client",
+      "due date",
+      "tax",
+      "receipt",
+      "freelancer"
+    ];
+    const presentTokens = invoicingTokens.filter((token) => source.includes(token));
+    checks.push({
+      step: "acceptance:landing:invoicing-domain-coverage",
+      ok: presentTokens.length >= 6,
+      detail:
+        presentTokens.length >= 6
+          ? `OK (${presentTokens.length} domain tokens)`
+          : `Need >=6 invoicing tokens, found ${presentTokens.length} (${presentTokens.join(", ") || "none"})`
+    });
+
+    const featureEntries = Array.from(appSource.matchAll(/"([^"]+)"/g)).map((m) => m[1]);
+    const featureScoped = featureEntries.filter((entry) => /invoice|payment|client|due|reminder|ach|receipt|tax|overdue/i.test(entry));
+    checks.push({
+      step: "acceptance:landing:feature-specificity",
+      ok: featureScoped.length >= 4,
+      detail:
+        featureScoped.length >= 4
+          ? `OK (${featureScoped.length} feature/pricing strings include domain terms)`
+          : `Need domain-specific features; only ${featureScoped.length} matched invoicing terms`
+    });
+
+    const heroSpecific = /freelancer/.test(source) && (/invoice|get paid|payment/.test(source));
+    checks.push({
+      step: "acceptance:landing:hero-specificity",
+      ok: heroSpecific,
+      detail: heroSpecific ? "OK" : "Hero copy missing audience/job-to-be-done specificity"
+    });
+
+    const pricingBlurbMatches = Array.from(appSource.matchAll(/blurb":"([^"]+)"/g)).map((m) => m[1]);
+    const pricingDomain = pricingBlurbMatches.filter((blurb) => /invoice|payment|reminder|client|workflow|billing|freelancer/i.test(blurb));
+    checks.push({
+      step: "acceptance:landing:pricing-coherence",
+      ok: pricingDomain.length >= 2,
+      detail:
+        pricingDomain.length >= 2
+          ? `OK (${pricingDomain.length} pricing blurbs tied to domain)`
+          : `Pricing blurbs are generic; only ${pricingDomain.length} mention invoicing workflow terms`
+    });
+  }
+
   return checks;
 }
 
 function extractPromptKeywords(prompt: string): string[] {
   const lower = normalizeText(prompt);
+  const isCommunicationPrompt =
+    /\bemail\b/.test(lower) ||
+    /\boutreach\b/.test(lower) ||
+    /\bnewsletter\b/.test(lower) ||
+    /\btweet\b/.test(lower) ||
+    /\bthread\b/.test(lower);
 
   const named: string[] = [];
   const calledMatch =
@@ -111,10 +208,11 @@ function extractPromptKeywords(prompt: string): string[] {
   pushIf(/\bpitch\s*deck\b/.test(lower), "deck");
   pushIf(/\baudit\b/.test(lower) || /\bvulnerab/i.test(lower), "audit");
   pushIf(/\berc[-\s]?20\b/.test(lower) || /\berc20\b/.test(lower), "erc");
-  pushIf(/\bqa\b/.test(lower), "qa");
+  // For communication/copy prompts, prioritize channel intent terms over domain acronyms like QA.
+  pushIf(/\bqa\b/.test(lower) && !isCommunicationPrompt, "qa");
   pushIf(/\bweb\s+apps?\b/.test(lower), "web");
   pushIf(/\blanding\b/.test(lower), "landing");
-  pushIf(/\bcold\s+email\b/.test(lower), "email");
+  pushIf(/\bcold\s+email\b/.test(lower) || /\boutreach\s+email\b/.test(lower) || /\bemail\b/.test(lower), "email");
   pushIf(/\boutreach\b/.test(lower), "outreach");
   pushIf(/\bmarket\s+analysis\b/.test(lower), "analysis");
   pushIf(/\btools?\b/.test(lower), "tools");
@@ -187,6 +285,8 @@ function extractPromptKeywords(prompt: string): string[] {
     "platforms",
     "company",
     "product",
+    "topic",
+    "topics",
     "copy",
     "document",
     "report",

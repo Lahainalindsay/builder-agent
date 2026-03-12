@@ -4,22 +4,28 @@ import {
   EntitySpec,
   FeaturePack,
   FeatureSpec,
+  PromptIntent,
+  PromptStructure,
   PromptSpec,
   RouteSpec
 } from "../types/spec";
 import { normalizeText } from "../utils/normalizeText";
+import { parsePromptStructure } from "../utils/promptStructure";
+import { parsePromptIntent } from "./intent";
 
 export function compilePrompt(rawPrompt: string, analysisContext?: string): PromptSpec {
   const prompt = normalize([rawPrompt, analysisContext ?? ""].filter(Boolean).join("\n\n"));
+  const promptStructure = parsePromptStructure(rawPrompt);
+  const intent = parsePromptIntent(rawPrompt);
   const normalizedPrompt = normalizeText(prompt);
-  const appType = classifyAppType(normalizedPrompt);
+  const appType = classifyAppType(normalizedPrompt, promptStructure, intent);
   const designTone = inferDesignTone(normalizedPrompt);
-  const goal = inferGoal(prompt);
-  const appName = inferAppName(rawPrompt, prompt, goal);
+  const goal = inferGoal(prompt, promptStructure);
+  const appName = inferAppName(rawPrompt, prompt, goal, promptStructure);
   const users = inferUsers(normalizedPrompt);
-  const pages = inferPages(normalizedPrompt, appType);
+  const pages = inferPages(normalizedPrompt, appType, promptStructure);
   const entities = inferEntities(normalizedPrompt, appType);
-  const features = inferFeatures(normalizedPrompt, appType, pages, entities);
+  const features = inferFeatures(normalizedPrompt, appType, pages, entities, promptStructure);
   const featurePacks = inferFeaturePacks(appType, pages, features);
   const mustHave = features.filter((feature) => feature.priority === "must").map((feature) => feature.description);
   const constraints = inferConstraints(normalizedPrompt);
@@ -58,6 +64,8 @@ export function compilePrompt(rawPrompt: string, analysisContext?: string): Prom
       ...lookupSummaries.map((line) => `Lookup: ${line}`),
       ...lookupSources.map((line) => `Source: ${line}`)
     ].slice(0, 14),
+    intent,
+    promptStructure,
     acceptanceChecks
   };
 }
@@ -112,7 +120,10 @@ function containsAny(haystack: string, needles: string[]): boolean {
   return needles.some((needle) => lower.includes(needle));
 }
 
-function inferGoal(prompt: string): string {
+function inferGoal(prompt: string, structure?: PromptStructure): string {
+  if (structure?.intents.length) {
+    return `${structure.intents[0].verb} ${structure.intents[0].object}`.trim();
+  }
   const firstLine = prompt.split("\n").find((line) => line.trim())?.trim() ?? "";
   const cleaned = firstLine.replace(/^prompt:\s*/i, "");
   if (cleaned.length >= 12 && cleaned.length <= 120) return cleaned;
@@ -121,7 +132,10 @@ function inferGoal(prompt: string): string {
   return match ? match[1].trim() : "Build a small, usable app that satisfies the prompt.";
 }
 
-function inferAppName(rawPrompt: string, prompt: string, goal: string): string {
+function inferAppName(rawPrompt: string, prompt: string, goal: string, structure?: PromptStructure): string {
+  if (structure?.subjectName) {
+    return titleCase(cleanTitle(structure.subjectName));
+  }
   const explicit = prompt.match(/app\s*name\s*:\s*(.+)/i)?.[1]?.trim();
   if (explicit) return titleCase(cleanTitle(explicit));
 
@@ -141,7 +155,41 @@ function inferDesignTone(prompt: string): "neutral" | "playful" | "luxury" {
   return "neutral";
 }
 
-function classifyAppType(prompt: string): AppType {
+function appTypeFromIntent(intent: PromptIntent): AppType | null {
+  switch (intent.deliverable) {
+    case "landing_page":
+      return "landing";
+    case "tweet_thread":
+    case "email":
+    case "pitch_deck":
+    case "newsletter_ideas":
+    case "market_analysis":
+      return "content";
+    case "audit_report":
+      return "audit";
+    case "dashboard_app":
+      return "dashboard";
+    case "crud_app":
+      return "crud";
+    case "viz_app":
+      return "viz";
+    case "docs_app":
+      return "docs";
+    case "game_app":
+      return "game";
+    case "story_app":
+      return "story";
+    default:
+      return null;
+  }
+}
+
+function classifyAppType(prompt: string, structure?: PromptStructure, intent?: PromptIntent): AppType {
+  if (intent) {
+    const fromIntent = appTypeFromIntent(intent);
+    if (fromIntent) return fromIntent;
+  }
+  if (structure?.deliverableHint) return structure.deliverableHint;
   const lower = prompt.toLowerCase();
   const hasAudit = containsAny(lower, [
     "smart contract audit",
@@ -269,7 +317,7 @@ function inferUsers(prompt: string): string[] {
   return users.length ? dedupe(users) : ["user"];
 }
 
-function inferPages(prompt: string, appType: AppType): RouteSpec[] {
+function inferPages(prompt: string, appType: AppType, structure?: PromptStructure): RouteSpec[] {
   const lower = prompt.toLowerCase();
 
   if (appType === "content" || appType === "audit") {
@@ -290,6 +338,17 @@ function inferPages(prompt: string, appType: AppType): RouteSpec[] {
 
   const pages: RouteSpec[] = [{ path: "/", title: "Overview", purpose: "Primary overview" }];
 
+  if (structure?.pageItems?.length) {
+    const mapped = structure.pageItems
+      .map((pageTitle) => {
+        const safe = pageTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        const path = safe === "overview" ? "/" : `/${safe || "page"}`;
+        return { path, title: titleCase(pageTitle), purpose: `${titleCase(pageTitle)} view` };
+      })
+      .slice(0, 6);
+    if (mapped.length) return dedupeByPath(mapped);
+  }
+
   if (containsAny(lower, ["report", "reports"])) {
     pages.push({ path: "/reports", title: "Reports", purpose: "Reporting view" });
   }
@@ -307,6 +366,17 @@ function inferPages(prompt: string, appType: AppType): RouteSpec[] {
   }
 
   return pages.slice(0, 6);
+}
+
+function dedupeByPath(pages: RouteSpec[]): RouteSpec[] {
+  const seen = new Set<string>();
+  const ordered: RouteSpec[] = [];
+  for (const page of pages) {
+    if (seen.has(page.path)) continue;
+    seen.add(page.path);
+    ordered.push(page);
+  }
+  return ordered;
 }
 
 function inferEntities(prompt: string, appType: AppType): EntitySpec[] {
@@ -348,7 +418,13 @@ function inferEntities(prompt: string, appType: AppType): EntitySpec[] {
   }));
 }
 
-function inferFeatures(prompt: string, appType: AppType, pages: RouteSpec[], entities: EntitySpec[]): FeatureSpec[] {
+function inferFeatures(
+  prompt: string,
+  appType: AppType,
+  pages: RouteSpec[],
+  entities: EntitySpec[],
+  structure?: PromptStructure
+): FeatureSpec[] {
   const lower = prompt.toLowerCase();
   const features: FeatureSpec[] = [];
   const add = (
@@ -418,8 +494,19 @@ function inferFeatures(prompt: string, appType: AppType, pages: RouteSpec[], ent
     add("persistence", "Persist records locally (localStorage)", "should", "behavior", ["offline", "localstorage", "persist"]);
   }
   if (appType === "landing") {
-    add("hero", "Hero section with CTA and value props", "must", "page", ["landing", "hero", "cta"]);
-    add("features", "Feature cards section", "must", "page", ["features", "benefits"]);
+    const includes = structure?.includeItems.map((item) => item.toLowerCase()) ?? [];
+    const wantsHero = includes.some((item) => item.includes("hero")) || includes.length === 0;
+    const wantsFeatures = includes.some((item) => item.includes("feature") || item.includes("services"));
+    const wantsPricing = includes.some((item) => item.includes("pricing"));
+    const wantsTestimonials = includes.some((item) => item.includes("testimonial") || item.includes("social proof"));
+    const wantsFaq = includes.some((item) => item.includes("faq"));
+    const wantsSignup = includes.some((item) => item.includes("signup") || item.includes("booking") || item.includes("cta"));
+    if (wantsHero) add("hero", "Hero section with CTA and value props", "must", "page", ["landing", "hero", "cta"]);
+    if (wantsFeatures || includes.length === 0) add("features", "Feature/services grid section", "must", "page", ["features", "services"]);
+    if (wantsPricing) add("pricing", "Pricing tiers section", "must", "page", ["pricing", "tiers"]);
+    if (wantsTestimonials) add("testimonials", "Testimonials or social proof section", "must", "page", ["testimonials", "social proof"]);
+    if (wantsFaq) add("faq", "FAQ section with objection handling", "should", "page", ["faq"]);
+    if (wantsSignup) add("signup", "CTA-focused signup/booking form", "must", "workflow", ["signup", "booking", "cta"]);
   }
   if (appType === "viz") {
     add("viz", "Show a simple visualization (lightweight bars)", "must", "page", ["chart", "visualization", "trend"]);

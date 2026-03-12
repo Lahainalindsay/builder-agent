@@ -613,6 +613,34 @@ function sanitizeLandingBrandName(candidate: string | undefined, lowerPrompt: st
   return raw;
 }
 
+function looksTitleCaseBrand(candidate: string): boolean {
+  const words = candidate.split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > 2) return false;
+  const titleLike = words.filter((word) => /^[A-Z][A-Za-z0-9'’-]*$/.test(word) || /^[A-Z0-9]{2,}$/.test(word)).length;
+  return titleLike >= Math.max(1, Math.ceil(words.length * 0.7));
+}
+
+function extractBrandName(prompt: string, fallback: string): string {
+  const p = prompt.trim();
+  const quotedMatch = p.match(/["“]([^"”]{2,60})["”]/);
+  if (quotedMatch?.[1]) return quotedMatch[1].trim();
+
+  const calledMatch = p.match(/\b(?:called|named)\s+([A-Za-z0-9&'\- ]{2,60})/i);
+  if (calledMatch?.[1]) return calledMatch[1].trim();
+
+  const forMatch = p.match(
+    /\bfor\s+([A-Za-z0-9&'’\- ]{2,60}?)(?=,|\s+-|\s+—|\s+(?:a|an|the)\b|\s+(?:that|which|who)\b|$)/i
+  );
+  if (forMatch?.[1]) {
+    const candidate = forMatch[1].trim();
+    const startsWithArticle = /^(a|an|the)\b/i.test(candidate);
+    const looksGeneric = /\b(tool|service|company|platform|startup|product)\b/i.test(candidate);
+    if (!startsWithArticle && !looksGeneric && looksTitleCaseBrand(candidate)) return candidate;
+  }
+
+  return fallback;
+}
+
 function refineLandingBrandName(name: string, prompt: string): string {
   const lower = prompt.toLowerCase();
   const normalized = name.trim();
@@ -624,6 +652,301 @@ function refineLandingBrandName(name: string, prompt: string): string {
     return lower.includes("santa cruz") ? "Santa Cruz Rare Florals" : "Rare Florals Studio";
   }
   return normalized;
+}
+
+function finalizeBrandName(rawPrompt: string, candidate?: string): string {
+  const cleaned = (candidate ?? "").trim();
+  const isScaffold =
+    !cleaned ||
+    /^your (product|company|brand|app)$/i.test(cleaned) ||
+    cleaned.toLowerCase().includes("your product");
+
+  if (!isScaffold) return cleaned;
+
+  const fromPrompt = extractBrandName(rawPrompt, "").trim();
+  if (fromPrompt) return fromPrompt;
+
+  return "Project Landing";
+}
+
+function extractPromptList(prompt: string, pattern: RegExp): string[] {
+  const match = prompt.match(pattern);
+  if (!match?.[1]) return [];
+  return match[1]
+    .split(/,| and | & /i)
+    .map((item) => item.replace(/["“”]/g, "").trim())
+    .filter((item) => item.length >= 3)
+    .slice(0, 6);
+}
+
+function inferAudienceLabel(prompt: string): string {
+  const lower = prompt.toLowerCase();
+  if (/freelancer|solo/.test(lower)) return "freelancers and solo operators";
+  if (/engineering|developer/.test(lower)) return "engineering and product teams";
+  if (/residential|commercial|property/.test(lower)) return "residential and commercial property clients";
+  if (/wedding|event/.test(lower)) return "event planners and gift buyers";
+  if (/web3|crypto|defi/.test(lower)) return "Web3 product and growth teams";
+  return "modern teams";
+}
+
+function audienceLabelFromIntent(audience?: string): string | null {
+  switch (audience) {
+    case "freelancers":
+      return "freelancers and solo operators";
+    case "real_estate_agents":
+      return "real estate agents and brokers";
+    case "developer_team":
+      return "engineering and product teams";
+    case "finance_team":
+      return "finance and accounting teams";
+    case "support_team":
+      return "support and operations teams";
+    case "founders":
+      return "founders and operator-led teams";
+    default:
+      return null;
+  }
+}
+
+function extractProductTypeFromPrompt(raw: string): string | undefined {
+  const quoted = raw.match(/["“]([^"”]{2,60})["”]/)?.[1]?.trim();
+  if (quoted) {
+    const after = raw.split(quoted)[1] ?? "";
+    const m = after.match(/,\s*(?:an?|the)\s+([^.\n]+?)(?=\.|$)/i);
+    if (m?.[1]) return m[1].trim();
+  }
+
+  const called = raw.match(/\b(?:called|named)\s+[A-Za-z0-9&'’\- ]{2,60}\s*,\s*(?:an?|the)\s+([^.\n]+?)(?=\.|$)/i);
+  if (called?.[1]) return called[1].trim();
+
+  const m2 = raw.match(/\b(?:a|an)\s+([^.\n]+?)(?=\s+for\s+|\s+that\s+|\s+which\s+|\.|$)/i);
+  if (m2?.[1]) return m2[1].trim();
+
+  return undefined;
+}
+
+function buildLandingFeaturesFromIntent(params: {
+  lower: string;
+  productType: string;
+  domainTerm: string;
+  audience: string;
+  requirements: string[];
+}): string[] {
+  const { lower, productType, audience, requirements } = params;
+  const sectionish = /\b(hero|pricing|testimonials|faq|signup|cta|feature grid|services grid|booking form|how it works|timeline)\b/i;
+  const reqFeatures = requirements
+    .map((r) => r.replace(/\.$/, "").trim())
+    .filter((r) => r.length >= 6 && !sectionish.test(r))
+    .slice(0, 4);
+
+  let base: string[] = [];
+
+  if (/soda|drink|beverage|flavor|flavors|nutrition|ingredients|calories|cans|bottles/.test(lower)) {
+    base = [
+      "Flavor cards that make each profile easy to compare at a glance",
+      "Nutrition highlights with calories, ingredients, and zero-sugar options",
+      "Customer review blocks that surface top-rated flavors and buyer quotes",
+      "Variety pack selector for first-time samplers and repeat buyers",
+      "Simple checkout CTA with email capture for launch drops and restocks",
+      "Subscription option for monthly cases with flexible skip controls"
+    ];
+  } else if (/invoice|invoicing|billing|late payment|reminder|ach|payment link/.test(lower)) {
+    base = [
+      "Create branded invoices in under a minute (templates + saved line items)",
+      "Automated reminders before and after due dates (stop chasing payments)",
+      "One-click pay links for card + ACH with auto-receipts",
+      "Track paid/pending/overdue with real-time status per client",
+      "Tax-ready exports (CSV) and monthly income summaries",
+      "Client portal view so customers can pay and download invoices"
+    ];
+  } else if (/real estate|realtor|listing|open house|mls|showing/.test(lower)) {
+    base = [
+      "Listing page generator with neighborhood highlights and photo gallery",
+      "Lead capture forms routed to your inbox + CRM export",
+      "Open-house CTA flow (QR code -> signup -> follow-up sequence)",
+      "Buyer/seller guides as downloadable assets for trust building",
+      "Testimonial + recent-sales proof blocks to increase inquiries",
+      "Calendar booking or showing-request workflow"
+    ];
+  } else if (/web3|crypto|defi|wallet|on-?chain|token|protocol/.test(lower)) {
+    base = [
+      "Wallet-first onboarding value prop with clear activation steps",
+      "Segmentation by wallet behavior (new, active, whale, dormant)",
+      "Campaign templates for launches, quests, and partner co-marketing",
+      "On-chain conversion tracking (events -> cohorts -> retention)",
+      "Social proof blocks tuned for protocols (TVL, users, integrations)",
+      "Security-first messaging for trust (audits, permissions, transparency)"
+    ];
+  } else if (/moving|storage|relocation/.test(lower)) {
+    base = [
+      "Instant quote request flow (move size, access, timing, special items)",
+      "Services grid: local moves, packing, storage, specialty handling",
+      "Clear 3-step process (book -> pack/pickup -> delivery/placement)",
+      "Day-of updates and confirmation (reduce where-are-you calls)",
+      "Upfront pricing tiers for common move sizes + add-ons",
+      "Property-safe handling (floor protection, padding, heavy-item plan)"
+    ];
+  } else if (/plant|plants|houseplant|succulent|bouquet|flowers|floral|nursery/.test(lower)) {
+    base = [
+      "Curated plant collections by light level (low/bright/indirect)",
+      "Same-day local delivery + scheduled pickup windows",
+      "Care cards and reminders so plants actually thrive",
+      "Gift bundles with note cards and seasonal wrapping",
+      "Subscription drops for fresh greenery every month",
+      "Easy swaps: replace-a-plant guarantee for local customers"
+    ];
+  } else {
+    base = [
+      `A clear offer for ${audience} with measurable outcomes`,
+      `A feature grid tailored to ${productType}`,
+      "Simple onboarding with a focused CTA",
+      "Proof blocks (testimonials + trust strip) to reduce friction",
+      `Pricing tiers aligned to ${audience} buying behavior`,
+      "A lightweight signup or booking flow that converts"
+    ];
+  }
+
+  const merged: string[] = [];
+  for (const f of reqFeatures) merged.push(f);
+  for (const f of base) {
+    if (merged.length >= 6) break;
+    if (!merged.some((x) => x.toLowerCase() === f.toLowerCase())) merged.push(f);
+  }
+  return merged.slice(0, 6);
+}
+
+function buildPromptDrivenLandingCopy(
+  spec: PromptSpec,
+  brand: ReturnType<typeof inferLandingBrand>
+): {
+  headline: string;
+  subheadline: string;
+  primaryCta: string;
+  secondaryCta: string;
+  trustStrip: string;
+  featureCards: string[];
+  pricing: Array<{ name: string; price: string; blurb: string }>;
+  testimonials: Array<{ quote: string; author: string; role: string }>;
+  signupTitle: string;
+  signupButton: string;
+} {
+  const prompt = spec.rawPrompt;
+  const lower = prompt.toLowerCase();
+  const isConsumerProduct =
+    /soda|drink|beverage|flavor|flavors|nutrition|ingredients|calories|cans|bottles/.test(lower);
+  const audience =
+    (isConsumerProduct ? "customers" : null) ??
+    spec.intent?.audienceDetail ??
+    audienceLabelFromIntent(spec.intent?.audience) ??
+    spec.promptStructure?.audience ??
+    inferAudienceLabel(prompt) ??
+    "customers";
+  const toneWords = spec.promptStructure?.brandTone?.length
+    ? spec.promptStructure.brandTone
+    : extractPromptList(prompt, /brand is\s+([^.\n]+)/i);
+  const offerList = extractPromptList(prompt, /offers?\s+([^.\n]+)/i);
+  const requirementList = spec.intent?.requirements ?? [];
+  const lookupHints = spec.assumptions
+    .filter((a) => a.startsWith("Lookup: "))
+    .map((a) => a.replace(/^Lookup:\s*/, "").trim());
+
+  const domainTerm =
+    /soda|drink|beverage|flavor|nutrition/.test(lower) ? "beverage" :
+    /moving|storage|relocation/.test(lower) ? "moving and storage" :
+    /landscap|lawn|yard|garden/.test(lower) ? "landscaping" :
+    /flower|floral|bouquet/.test(lower) ? "floral design" :
+    /web3|crypto|defi/.test(lower) ? "Web3 growth" :
+    /invoice|billing/.test(lower) ? "invoicing" :
+    "service";
+  const productType = spec.intent?.productType ?? extractProductTypeFromPrompt(prompt) ?? (isConsumerProduct ? "beverage brand" : domainTerm);
+
+  const toneLabel = toneWords.length ? toneWords.join(", ") : spec.intent?.tone ?? "clear and reliable";
+  const styleLabel = spec.intent?.brandStyle?.length ? spec.intent.brandStyle.join(", ") : toneLabel;
+  const featureCards = buildLandingFeaturesFromIntent({
+    lower,
+    productType,
+    domainTerm,
+    audience,
+    requirements: [...offerList, ...requirementList, ...lookupHints]
+  });
+  const headline =
+    isConsumerProduct
+      ? `Meet ${brand.companyName} - bold flavor made for everyday refreshment.`
+      : /plant|plants|houseplant|succulent|bouquet|flowers|floral|nursery/.test(lower)
+      ? "Coastal plants, delivered with care."
+      : /invoice|billing/.test(lower)
+      ? `Get paid faster with ${brand.companyName}.`
+      : /moving|storage|relocation/.test(lower)
+        ? `Book a stress-free move in minutes with ${brand.companyName}.`
+        : /web3|crypto|defi/.test(lower)
+          ? `${brand.companyName}: turn wallet activity into growth.`
+          : `${brand.companyName} for ${audience}.`;
+  const subheadline =
+    isConsumerProduct
+      ? "Bold flavors, clean ingredients, and zero-fuss ordering. Built for people who want refreshment without compromise."
+      : /plant|plants|houseplant|succulent|bouquet|flowers|floral|nursery/.test(lower)
+      ? `${brand.companyName} curates hardy, beautiful greenery for island homes, with easy pickup, local delivery, and care guides included.`
+      : `A ${productType} built for ${audience}. Clear value props, real proof, and a focused CTA, based directly on your prompt requirements.`;
+  const actionLabel = (action?: string): string => {
+    switch (action) {
+      case "shop":
+        return "Shop now";
+      case "email_signup":
+        return "Join email list";
+      case "book":
+        return "Book now";
+      case "contact":
+        return "Contact us";
+      default:
+        return "Learn more";
+    }
+  };
+
+  return {
+    headline,
+    subheadline,
+    primaryCta: actionLabel(spec.intent?.primaryAction),
+    secondaryCta: actionLabel(spec.intent?.secondaryAction),
+    trustStrip: `Positioned with a ${styleLabel} brand voice and ${spec.intent?.goal === "conversion" ? "conversion-first" : "clarity-first"} structure.`,
+    featureCards,
+    pricing: [
+      isConsumerProduct
+        ? { name: "Starter Pack", price: "$24", blurb: "A 12-pack sampler with crowd-favorite flavors." }
+        : { name: "Starter", price: "$29/mo", blurb: `Core ${domainTerm} workflows for teams getting started.` },
+      isConsumerProduct
+        ? { name: "Variety Box", price: "$49", blurb: "Mixed flavors with nutrition-friendly options included." }
+        : { name: "Growth", price: "$79/mo", blurb: `Expanded automation and reporting for active ${domainTerm} operations.` },
+      isConsumerProduct
+        ? { name: "Monthly Club", price: "$39/mo", blurb: "Recurring flavor drops with flexible delivery cadence." }
+        : { name: "Scale", price: "$199/mo", blurb: `Advanced controls for multi-team ${domainTerm} execution.` }
+    ],
+    testimonials: [
+      isConsumerProduct
+        ? {
+          quote: `Summit Soda actually tastes bold without the sugar crash. I reordered the same week.`,
+          author: "Nina R.",
+          role: "Customer"
+        }
+        : {
+          quote: `${brand.companyName} made it much easier for our team to explain value and convert high-intent visitors.`,
+          author: "Casey M.",
+          role: "Operations Lead"
+        },
+      isConsumerProduct
+        ? {
+          quote: "Flavor variety is strong, and the nutrition details are easy to trust at a glance.",
+          author: "Marcus T.",
+          role: "Subscriber"
+        }
+        : {
+          quote: "The page messaging finally matches what customers actually need from us.",
+          author: "Jordan P.",
+          role: "Growth Manager"
+        }
+    ],
+    signupTitle: isConsumerProduct ? "Get flavor drops and launch deals" : "Start with a tailored landing brief",
+    signupButton: isConsumerProduct ? "Join Summit Soda list" : "Create my page"
+  };
 }
 
 function inferLandingCopyModel(
@@ -643,46 +966,48 @@ function inferLandingCopyModel(
 } {
   const lower = spec.rawPrompt.toLowerCase();
   const isInvoicing = /invoice|invoicing|billing|freelancer|payment links?|reminder|late payment/.test(lower);
+  const isAccounting = /accounting|bookkeeping|reconcile|general ledger|expense|receipt|close the books/.test(lower);
   const isWeb3 = /web3|crypto|defi|wallet|on-chain|onchain|token/.test(lower);
-  const isLandscaping = /landscap|lawn|yard|garden|residential|commercial properties/.test(lower);
-  const isFlowers = /flower|floral|bouquet|wedding flowers|potted/.test(lower);
+  const isLandscaping = /landscap|lawn|yard|garden/.test(lower);
+  const isPlantShop = /plant shop|houseplant|succulent|nursery|coastal plant|plants/.test(lower);
+  const isFlowers = /flower|floral|bouquet|wedding flowers|potted|plant|houseplant|succulent|nursery/.test(lower);
   const isPlayfulMerch = /joke|fun|sarcastic|comeback|shirt|sticker|meme/.test(lower);
 
-  if (isLandscaping) {
+  if (isPlantShop) {
     return {
-      headline: "Reliable landscaping that makes every property stand out.",
+      headline: "Coastal plants, delivered with care.",
       subheadline:
-        `${brand.companyName} serves Lahaina homes and businesses with hardworking crews, consistent quality, and island-ready landscape care.`,
-      primaryCta: "Request a quote",
-      secondaryCta: "See services",
-      trustStrip: "Hawaiian-rooted, hardworking, and reliable service for residential and commercial properties.",
+        `${brand.companyName} curates hardy, beautiful greenery for island homes, with easy pickup, local delivery, and care guides included.`,
+      primaryCta: "Shop plants",
+      secondaryCta: "Join email list",
+      trustStrip: "Local plant curation designed for healthy, long-lasting greenery at home.",
       featureCards: [
-        "Residential landscape maintenance with dependable scheduling",
-        "Commercial property care designed for curb appeal and consistency",
-        "Irrigation checks and seasonal plant health support",
-        "Design refreshes for yards, entryways, and common areas",
-        "Fast crew response with clear communication and follow-through",
-        "Service plans tailored to Maui climate and property needs"
+        "Curated plant collections by light level (low/bright/indirect)",
+        "Same-day local delivery + scheduled pickup windows",
+        "Care cards and reminders so plants actually thrive",
+        "Gift bundles with note cards and seasonal wrapping",
+        "Subscription drops for fresh greenery every month",
+        "Easy swaps: replace-a-plant guarantee for local customers"
       ],
       pricing: [
-        { name: "Residential", price: "From $149/mo", blurb: "Routine maintenance and cleanup for home properties." },
-        { name: "Commercial", price: "From $399/mo", blurb: "Ongoing service plans for offices and multi-unit spaces." },
-        { name: "Custom", price: "Quote-based", blurb: "Design, renovation, and specialized project work." }
+        { name: "Starter", price: "$29", blurb: "Entry plant bundles with care cards and simple setup notes." },
+        { name: "Home", price: "$79", blurb: "Best-selling curated sets for apartments and family spaces." },
+        { name: "Subscription", price: "$39/mo", blurb: "Monthly fresh greenery drops with flexible pickup or delivery." }
       ],
       testimonials: [
         {
-          quote: "They show up on schedule, work hard, and leave our property looking sharp every time.",
-          author: "Leilani M.",
-          role: "Homeowner"
+          quote: "The plants arrived healthy and the care cards made setup easy.",
+          author: "Lea N.",
+          role: "Local Homeowner"
         },
         {
-          quote: "Reliable crew and clear communication. Exactly what we needed for commercial upkeep.",
-          author: "Kaleo P.",
-          role: "Property Manager"
+          quote: "Our cafe gets compliments every week on the plant selection.",
+          author: "Kimo R.",
+          role: "Small Business Owner"
         }
       ],
-      signupTitle: "Book a landscaping consult in Lahaina",
-      signupButton: "Get my quote"
+      signupTitle: "Get seasonal plant drops",
+      signupButton: "Join HarborBloom list"
     };
   }
 
@@ -762,6 +1087,82 @@ function inferLandingCopyModel(
     };
   }
 
+  if (isAccounting) {
+    return {
+      headline: "Close the books faster with fewer spreadsheets.",
+      subheadline:
+        `${brand.companyName} helps teams reconcile transactions, track expenses, and generate clean accounting reports in one place.`,
+      primaryCta: "Start free",
+      secondaryCta: "See reports",
+      trustStrip: "Built for finance teams and operators who need clarity, speed, and reliable month-end workflows.",
+      featureCards: [
+        "Automated transaction categorization with human-review controls",
+        "Bank and card reconciliation with exception flagging",
+        "Expense tracking with receipt attachment and audit trail",
+        "Month-end close checklist with owner and status tracking",
+        "P&L and cash flow snapshots with export-ready reports",
+        "Role-aware collaboration for bookkeepers and operators"
+      ],
+      pricing: [
+        { name: "Starter", price: "$29/mo", blurb: "Reconciliation and core accounting reports for small teams." },
+        { name: "Pro", price: "$79/mo", blurb: "Faster close workflows with approvals and exceptions." },
+        { name: "Team", price: "$149/mo", blurb: "Collaboration, controls, and advanced export workflows." }
+      ],
+      testimonials: [
+        {
+          quote: "We cut close-time and stopped juggling spreadsheets across tools.",
+          author: "Sam L.",
+          role: "Finance Ops"
+        },
+        {
+          quote: "Exception flags catch issues before month-end review.",
+          author: "Priya D.",
+          role: "Bookkeeper"
+        }
+      ],
+      signupTitle: "Get accounting clarity this week",
+      signupButton: "Create workspace"
+    };
+  }
+
+  if (isLandscaping) {
+    return {
+      headline: "Reliable landscaping that makes every property stand out.",
+      subheadline:
+        `${brand.companyName} serves Lahaina homes and businesses with hardworking crews, consistent quality, and island-ready landscape care.`,
+      primaryCta: "Request a quote",
+      secondaryCta: "See services",
+      trustStrip: "Hawaiian-rooted, hardworking, and reliable service for residential and commercial properties.",
+      featureCards: [
+        "Residential landscape maintenance with dependable scheduling",
+        "Commercial property care designed for curb appeal and consistency",
+        "Irrigation checks and seasonal plant health support",
+        "Design refreshes for yards, entryways, and common areas",
+        "Fast crew response with clear communication and follow-through",
+        "Service plans tailored to Maui climate and property needs"
+      ],
+      pricing: [
+        { name: "Residential", price: "From $149/mo", blurb: "Routine maintenance and cleanup for home properties." },
+        { name: "Commercial", price: "From $399/mo", blurb: "Ongoing service plans for offices and multi-unit spaces." },
+        { name: "Custom", price: "Quote-based", blurb: "Design, renovation, and specialized project work." }
+      ],
+      testimonials: [
+        {
+          quote: "They show up on schedule, work hard, and leave our property looking sharp every time.",
+          author: "Leilani M.",
+          role: "Homeowner"
+        },
+        {
+          quote: "Reliable crew and clear communication. Exactly what we needed for commercial upkeep.",
+          author: "Kaleo P.",
+          role: "Property Manager"
+        }
+      ],
+      signupTitle: "Book a landscaping consult in Lahaina",
+      signupButton: "Get my quote"
+    };
+  }
+
   if (isWeb3) {
     return {
       headline: "Turn curious visitors into wallet-connected users.",
@@ -838,25 +1239,7 @@ function inferLandingCopyModel(
     };
   }
 
-  return {
-    headline: `Grow faster with ${brand.companyName}.`,
-    subheadline: "A focused landing experience built to communicate value clearly and convert visitors to signups.",
-    primaryCta: "Get started",
-    secondaryCta: "See plans",
-    trustStrip: brand.trustStripTitle,
-    featureCards: brand.featureBullets.length ? brand.featureBullets : buildLandingFeatures(spec),
-    pricing: [
-      { name: "Starter", price: "$19/mo", blurb: "Essential workflow for early teams." },
-      { name: "Pro", price: "$49/mo", blurb: "Best for growing teams with higher throughput." },
-      { name: "Team", price: "$99/mo", blurb: "Advanced collaboration and governance controls." }
-    ],
-    testimonials: [
-      { quote: brand.testimonial.quote, author: brand.testimonial.author, role: "Customer" },
-      { quote: "Clear onboarding and a much better conversion flow than our previous site.", author: "Alex S.", role: "Operator" }
-    ],
-    signupTitle: "Create your account",
-    signupButton: "Start now"
-  };
+  return buildPromptDrivenLandingCopy(spec, brand);
 }
 
 function inferLandingVisualModel(spec: PromptSpec): {
@@ -869,8 +1252,9 @@ function inferLandingVisualModel(spec: PromptSpec): {
   const lower = spec.rawPrompt.toLowerCase();
   const isWeb3 = /web3|crypto|defi|wallet|token|on-chain|onchain/.test(lower);
   const isInvoicing = /invoice|invoicing|billing|freelancer|payments?/.test(lower);
-  const isLandscaping = /landscap|lawn|yard|garden|maui|lahaina/.test(lower);
-  const isFlowers = /flower|floral|bouquet|wedding flowers|potted|santa cruz/.test(lower);
+  const isAccounting = /accounting|bookkeeping|reconcile|general ledger|expense|receipt|close the books/.test(lower);
+  const isLandscaping = /landscap|lawn|yard|garden/.test(lower);
+  const isFlowers = /flower|floral|bouquet|wedding flowers|potted|santa cruz|plant|houseplant|succulent|nursery/.test(lower);
   const isPlayfulMerch = /joke|fun|sarcastic|comeback|shirt|sticker|meme/.test(lower);
 
   if (isLandscaping) {
@@ -900,6 +1284,16 @@ function inferLandingVisualModel(spec: PromptSpec): {
       bg: "#f8fafc",
       card: "#ffffff",
       heroImage: "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?auto=format&fit=crop&w=1800&q=80"
+    };
+  }
+
+  if (isAccounting) {
+    return {
+      accent: "#0f766e",
+      accentSoft: "#ccfbf1",
+      bg: "#f8fafc",
+      card: "#ffffff",
+      heroImage: "https://images.unsplash.com/photo-1554224154-22dec7ec8818?auto=format&fit=crop&w=1800&q=80"
     };
   }
 
@@ -944,9 +1338,11 @@ function inferLandingThemePack(
   const lower = spec.rawPrompt.toLowerCase();
   const isWeb3 = /web3|crypto|defi|wallet|token|on-chain|onchain/.test(lower);
   const isInvoicing = /invoice|invoicing|billing|freelancer|payments?/.test(lower);
-  const isFlowers = /flower|floral|bouquet|wedding flowers|potted/.test(lower);
-  const isLandscaping = /landscap|lawn|yard|garden|maui|lahaina/.test(lower);
+  const isAccounting = /accounting|bookkeeping|reconcile|general ledger|expense|receipt|close the books/.test(lower);
+  const isFlowers = /flower|floral|bouquet|wedding flowers|potted|plant|houseplant|succulent|nursery/.test(lower);
+  const isLandscaping = /landscap|lawn|yard|garden/.test(lower);
   const isPlayfulMerch = /joke|fun|sarcastic|comeback|shirt|sticker|meme/.test(lower);
+  const isConsumerProduct = /soda|drink|beverage|flavor|flavors|nutrition|ingredients|calories|cans|bottles/.test(lower);
 
   if (isWeb3) {
     return {
@@ -982,9 +1378,26 @@ function inferLandingThemePack(
     };
   }
 
+  if (isAccounting) {
+    return {
+      socialProof: ["Bookkeepers", "Controllers", "Finance Ops", "Small Business Teams"],
+      steps: [
+        { title: "1. Connect accounts", body: "Import transactions from bank and card sources." },
+        { title: "2. Reconcile and review", body: "Resolve exceptions and confirm categorized activity." },
+        { title: "3. Report and close", body: "Export clean reports and complete month-end tasks." }
+      ],
+      faq: [
+        { q: "Can I export reports for my accountant?", a: "Yes. Export-ready reports are included." },
+        { q: "Do you support reconciliation workflows?", a: "Yes. Match transactions and review exceptions quickly." },
+        { q: "Can teams collaborate?", a: "Yes. Shared workflows support finance and operations roles." },
+        { q: "Is this suitable for monthly close?", a: "Yes. Close checklists and reporting are part of the core flow." }
+      ]
+    };
+  }
+
   if (isFlowers) {
     return {
-      socialProof: ["Wedding Planners", "Local Events", "Boutique Clients", "Gift Orders"],
+      socialProof: ["Local Homeowners", "Interior Designers", "Gift Buyers", "Small Businesses & Cafes"],
       steps: [
         { title: "1. Share your floral vision", body: "Tell us your style, occasion, and color palette." },
         { title: "2. Review a custom proposal", body: "We curate rare stems and present tailored arrangement options." },
@@ -1033,19 +1446,276 @@ function inferLandingThemePack(
     };
   }
 
+  if (isConsumerProduct) {
+    return {
+      socialProof: ["Flavor Seekers", "Gym Goers", "Busy Students", "Daily Commuters"],
+      steps: [
+        { title: "1. Pick your flavor lineup", body: "Browse flavor cards and compare profiles fast." },
+        { title: "2. Check nutrition at a glance", body: "Review ingredients, calories, and key nutrition highlights." },
+        { title: "3. Order your first drop", body: "Choose one-time packs or subscribe for recurring deliveries." }
+      ],
+      faq: [
+        { q: "Do you show nutrition details for every flavor?", a: "Yes. Every flavor card includes ingredient and nutrition highlights." },
+        { q: "Can I order a sampler before committing?", a: "Yes. Starter and variety packs are available for first-time buyers." },
+        { q: "Is there a subscription option?", a: "Yes. Monthly deliveries can be paused or skipped anytime." },
+        { q: "How do customer reviews work?", a: "Reviews are shown per flavor so shoppers can compare before buying." }
+      ]
+    };
+  }
+
   return {
     socialProof: [brand.industryLabel, "Growing Teams", "High-Intent Buyers", "Conversion-Focused Operators"],
     steps: [
-      { title: "1. Clarify your offer", body: "Define your primary value proposition in one clear message." },
-      { title: "2. Present trust and proof", body: "Use features, testimonials, and pricing to reduce buyer friction." },
-      { title: "3. Convert with a clear CTA", body: "Drive visitors to one focused signup action." }
+      { title: "1. Capture demand", body: "Lead with the core problem and who this page is built for." },
+      { title: "2. Prove fit", body: "Show concrete features, proof points, and outcomes that reduce hesitation." },
+      { title: "3. Drive action", body: "Use one clear CTA and a short form to convert high-intent visitors." }
     ],
     faq: [
-      { q: "Can this page be customized?", a: "Yes. Content, visuals, and sections are prompt-driven and editable." },
-      { q: "Is this mobile-friendly?", a: "Yes. The base template is responsive by default." },
-      { q: "Can I update pricing and testimonials?", a: "Yes. Plans and proof blocks are easy to replace." },
-      { q: "How fast can this go live?", a: "Most teams can launch quickly with this base structure." }
+      { q: "Can this page be customized?", a: "Yes. Content and visual tone are derived from your prompt and can be edited." },
+      { q: "Is this mobile-friendly?", a: "Yes. The layout is responsive and built for mobile and desktop." },
+      { q: "Can I update pricing and testimonials?", a: "Yes. Plans and proof blocks are editable in one place." },
+      { q: "How fast can this go live?", a: "Most teams can ship this page quickly with minor brand tweaks." }
     ]
+  };
+}
+
+type LandingBrief = {
+  brandName: string;
+  productType: string;
+  productCategory: string;
+  targetAudience: string;
+  painPoints: string[];
+  valueProps: string[];
+  features: Array<{ title: string; description: string; icon: string }>;
+  howItWorks: Array<{ title: string; description: string }>;
+  testimonials: Array<{ quote: string; author: string; role: string }>;
+  pricing: Array<{ name: string; price: string; blurb: string }>;
+  faqs: Array<{ q: string; a: string }>;
+  socialProof: string[];
+  hero: {
+    headline: string;
+    subheadline: string;
+    primaryCta: string;
+    secondaryCta: string;
+    trustStrip: string;
+  };
+  signup: { title: string; button: string };
+  requestedSections: {
+    features: boolean;
+    howItWorks: boolean;
+    testimonials: boolean;
+    pricing: boolean;
+    faq: boolean;
+    signup: boolean;
+    socialProof: boolean;
+  };
+  theme: { primary: string; accentSoft: string; background: string; card: string };
+  heroImage: { kind: "url"; value: string };
+};
+
+type LandingSection = "hero" | "features" | "howItWorks" | "testimonials" | "pricing" | "faq" | "signup" | "socialProof";
+
+const LANDING_SECTION_SYNONYMS: Record<LandingSection, string[]> = {
+  hero: ["hero", "headline", "above the fold"],
+  features: [
+    "feature",
+    "features",
+    "services",
+    "services grid",
+    "feature grid",
+    "grid",
+    "cards",
+    "flavor",
+    "flavors",
+    "flavor cards",
+    "highlights",
+    "nutrition",
+    "nutrition highlights",
+    "benefits",
+    "value props",
+    "value propositions"
+  ],
+  howItWorks: ["how it works", "steps", "step", "process", "onboarding", "timeline"],
+  testimonials: ["testimonial", "testimonials", "reviews", "customer reviews", "ratings", "what customers say"],
+  pricing: ["pricing", "price", "plans", "plan", "tiers", "tier"],
+  faq: ["faq", "faqs", "questions", "q&a"],
+  signup: [
+    "signup",
+    "sign up",
+    "email signup",
+    "email sign up",
+    "email signup form",
+    "email capture",
+    "capture form",
+    "newsletter",
+    "join email list",
+    "booking",
+    "book",
+    "booking form",
+    "cta",
+    "call to action",
+    "form"
+  ],
+  socialProof: ["social proof", "trusted by", "logos", "press", "as seen in", "testimonial"]
+};
+
+function sectionSet(spec: PromptSpec): Set<string> {
+  const sectionHints = new Set([
+    ...Object.values(LANDING_SECTION_SYNONYMS).flat(),
+    "featured",
+    "featured products",
+    "newsletter signup"
+  ]);
+  const normalizeSection = (s: string): string => {
+    const v = s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+    if (!v) return v;
+    if (v.includes("social proof") || v.includes("trusted by")) return "social proof";
+    if (v.includes("press") || v.includes("as seen in") || v.includes("logos")) return "social proof";
+    if (v.includes("email capture") || v.includes("signup") || v.includes("sign up")) return "signup";
+    if (v.includes("newsletter") || v.includes("join email list")) return "signup";
+    if (v.includes("booking") || v.includes("schedule") || v.includes("book a call")) return "booking form";
+    if (v.includes("call to action")) return "cta";
+    if (v.includes("feature grid") || v === "features") return "features";
+    if (v.includes("cards") || v.includes("flavor")) return "features";
+    if (v.includes("highlights") || v.includes("benefits") || v.includes("value props") || v.includes("value propositions")) return "features";
+    if (v.includes("nutrition")) return "features";
+    if (v.includes("services")) return "services";
+    if (v.includes("how it works") || v.includes("process") || v.includes("steps")) return "how it works";
+    if (v.includes("pricing")) return "pricing";
+    if (v.includes("plan") || v.includes("tier")) return "pricing";
+    if (v.includes("testimonial")) return "testimonials";
+    if (v.includes("reviews") || v.includes("ratings") || v.includes("what customers say")) return "testimonials";
+    if (v.includes("faq")) return "faq";
+    if (v.includes("questions") || v.includes("q a")) return "faq";
+    if (v.includes("hero")) return "hero";
+    return v;
+  };
+  const classifySection = (value: string): boolean => {
+    const normalized = value.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+    if (!normalized) return false;
+    if (/\bsection\b/.test(normalized)) return true;
+    return Array.from(sectionHints).some((hint) => normalized.includes(hint));
+  };
+
+  const explicitSections = spec.intent?.normalizedSections ?? spec.intent?.sections ?? [];
+  const includeItems = spec.promptStructure?.includeItems ?? [];
+  const promptCandidates = spec.rawPrompt
+    .split(/\n|,|;|\.|\bwith\b|\band\b/gi)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const matchedHints = Array.from(sectionHints).filter((hint) => spec.rawPrompt.toLowerCase().includes(hint));
+  const merged = [...explicitSections, ...includeItems, ...promptCandidates, ...matchedHints].filter((value) => classifySection(value));
+  return new Set(
+    merged
+      .map((value) => normalizeSection(value))
+      .filter(Boolean)
+  );
+}
+
+function hasSection(sectionValues: Set<string>, keys: string[]): boolean {
+  if (sectionValues.size === 0) return true;
+  return keys.some((key) => {
+    const needle = key.toLowerCase();
+    for (const value of sectionValues.values()) {
+      if (value.includes(needle)) return true;
+    }
+    return false;
+  });
+}
+
+function inferLandingBrief(spec: PromptSpec): LandingBrief {
+  const brand = inferLandingBrand(spec);
+  const candidate =
+    spec.intent?.brandName ??
+    extractBrandName(spec.rawPrompt, brand.companyName);
+  brand.companyName = finalizeBrandName(
+    spec.rawPrompt,
+    refineLandingBrandName(candidate, spec.rawPrompt)
+  );
+  const copy = inferLandingCopyModel(spec, brand);
+  const visual = inferLandingVisualModel(spec);
+  const theme = inferLandingThemePack(spec, brand, copy);
+  const lower = spec.rawPrompt.toLowerCase();
+  const sections = sectionSet(spec);
+
+  const isConsumerProduct = /soda|drink|beverage|flavor|flavors|nutrition|ingredients|calories|cans|bottles/.test(lower);
+
+  const productCategory =
+    isConsumerProduct ? "consumer goods" :
+    /invoice|billing|freelancer/.test(lower) ? "invoicing" :
+    /web3|crypto|defi|wallet|token/.test(lower) ? "web3 growth" :
+    /landscap|lawn|yard|garden/.test(lower) ? "landscaping" :
+    /flower|floral|bouquet|wedding/.test(lower) ? "floral studio" :
+    /joke|sarcastic|shirt|sticker|comeback/.test(lower) ? "fun merch" :
+    "software";
+
+  const targetAudience =
+    isConsumerProduct ? "customers and beverage buyers" :
+    /freelancer/.test(lower) ? "freelancers and solo operators" :
+    /engineering|developer|platform/.test(lower) ? "engineering and product teams" :
+    /property|residential|commercial/.test(lower) ? "property owners and managers" :
+    /wedding|gift/.test(lower) ? "event planners and gift shoppers" :
+    "growing teams";
+
+  const painPoints =
+    productCategory === "invoicing"
+      ? ["Late payments", "Manual follow-up", "Scattered billing records"]
+      : productCategory === "consumer goods"
+        ? ["Flavor fatigue", "Unclear ingredient labels", "Low trust in product claims"]
+      : productCategory === "web3 growth"
+        ? ["Low activation", "Weak trust signals", "Unclear onboarding journey"]
+        : ["Unclear value messaging", "Low conversion", "Inconsistent user flow"];
+
+  const valueProps =
+    productCategory === "invoicing"
+      ? ["Faster payments", "Automated reminders", "Client-ready billing workflow"]
+      : productCategory === "consumer goods"
+        ? ["Distinct flavor lineup", "Transparent nutrition details", "Easy reorder path"]
+      : productCategory === "web3 growth"
+        ? ["Higher conversion", "Clear onboarding", "Campaign-ready launch blocks"]
+        : ["Faster onboarding", "Clear positioning", "Conversion-focused structure"];
+
+  return {
+    brandName: brand.companyName,
+    productType: spec.intent?.productType ?? spec.promptStructure?.subjectDescriptor ?? "product experience",
+    productCategory,
+    targetAudience,
+    painPoints,
+    valueProps,
+    features: copy.featureCards.slice(0, 6).map((description, index) => ({
+      title: `Feature ${index + 1}`,
+      description,
+      icon: ["Bolt", "Compass", "Shield", "Chart", "Sparkles", "Rocket"][index % 6]
+    })),
+    howItWorks: theme.steps.map((step) => ({ title: step.title, description: step.body })),
+    testimonials: copy.testimonials,
+    pricing: copy.pricing,
+    faqs: theme.faq.slice(0, 5),
+    socialProof: theme.socialProof,
+    hero: {
+      headline: copy.headline,
+      subheadline: copy.subheadline,
+      primaryCta: copy.primaryCta,
+      secondaryCta: copy.secondaryCta,
+      trustStrip: copy.trustStrip
+    },
+    signup: { title: copy.signupTitle, button: copy.signupButton },
+    requestedSections: {
+      features: hasSection(sections, LANDING_SECTION_SYNONYMS.features),
+      howItWorks: hasSection(sections, LANDING_SECTION_SYNONYMS.howItWorks),
+      testimonials: hasSection(sections, LANDING_SECTION_SYNONYMS.testimonials),
+      pricing: hasSection(sections, LANDING_SECTION_SYNONYMS.pricing),
+      faq: hasSection(sections, LANDING_SECTION_SYNONYMS.faq),
+      signup: hasSection(sections, LANDING_SECTION_SYNONYMS.signup),
+      socialProof: hasSection(sections, LANDING_SECTION_SYNONYMS.socialProof)
+    },
+    theme: {
+      primary: visual.accent,
+      accentSoft: visual.accentSoft,
+      background: visual.bg,
+      card: visual.card
+    },
+    heroImage: { kind: "url", value: visual.heroImage }
   };
 }
 
@@ -1253,7 +1923,31 @@ export default function ${componentName(route)}() {
 
 function landingPage(spec: PromptSpec, route: RouteSpec, index: number): string {
   const lowerPrompt = spec.rawPrompt.toLowerCase();
-  const isOffroad = /offroad|off-road|trail|dirt bike|dirtbike|atv|4x4|map|weather/.test(lowerPrompt);
+  const offroadStrong = [
+    /\boff[-\s]?road\b/,
+    /\bdirt\s*bike\b/,
+    /\bdirtbike\b/,
+    /\batv\b/,
+    /\b4x4\b/,
+    /\boverland(ing)?\b/,
+    /\bmotocross\b/,
+    /\bjeep\b/
+  ];
+
+  const offroadWeak = [
+    /\btrails?\b/,
+    /\btrail\s+guide\b/,
+    /\bwaypoints?\b/,
+    /\bgpx\b/,
+    /\bterrain\b/,
+    /\bmaps?\b/,
+    /\bweather\b/,
+    /\broutes?\b/
+  ];
+
+  const strongHits = offroadStrong.filter((re) => re.test(lowerPrompt)).length;
+  const weakHits = offroadWeak.filter((re) => re.test(lowerPrompt)).length;
+  const isOffroad = strongHits >= 1 || weakHits >= 2;
   const githubRepoUrl = spec.rawPrompt.match(/https?:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/i)?.[0];
 
   if (isOffroad) {
@@ -1380,20 +2074,17 @@ export default function ${componentName(route)}() {
 `;
   }
 
-  const brand = inferLandingBrand(spec);
-  brand.companyName = refineLandingBrandName(brand.companyName, spec.rawPrompt);
-  const copy = inferLandingCopyModel(spec, brand);
-  const visual = inferLandingVisualModel(spec);
-  const theme = inferLandingThemePack(spec, brand, copy);
+  const brief = inferLandingBrief(spec);
   return `import { FormEvent, useMemo, useState } from "react";
 
-const FEATURES = ${JSON.stringify(copy.featureCards.slice(0, 6))} as const;
-const TESTIMONIALS = ${JSON.stringify(copy.testimonials)} as const;
-const PLANS = ${JSON.stringify(copy.pricing)} as const;
-const VISUAL = ${JSON.stringify(visual)} as const;
-const SOCIAL_PROOF = ${JSON.stringify(theme.socialProof)} as const;
-const STEPS = ${JSON.stringify(theme.steps)} as const;
-const FAQ = ${JSON.stringify(theme.faq)} as const;
+const FEATURES = ${JSON.stringify(brief.features.map((item) => item.description))} as const;
+const TESTIMONIALS = ${JSON.stringify(brief.testimonials)} as const;
+const PLANS = ${JSON.stringify(brief.pricing)} as const;
+const VISUAL = ${JSON.stringify({ accent: brief.theme.primary, accentSoft: brief.theme.accentSoft, bg: brief.theme.background, card: brief.theme.card, heroImage: brief.heroImage.value })} as const;
+const SOCIAL_PROOF = ${JSON.stringify(brief.socialProof)} as const;
+const STEPS = ${JSON.stringify(brief.howItWorks)} as const;
+const FAQ = ${JSON.stringify(brief.faqs)} as const;
+const SHOW = ${JSON.stringify(brief.requestedSections)} as const;
 
 export default function ${componentName(route)}() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -1415,22 +2106,22 @@ export default function ${componentName(route)}() {
     <section className="px-6 py-8" id="top" style={{ backgroundColor: VISUAL.bg }}>
       <div className="rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }}>
         <nav className="mb-6 flex flex-wrap gap-2">
-          <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#features">Features</a>
-          <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#how-it-works">How it works</a>
-          <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#pricing">Pricing</a>
-          <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#testimonials">Testimonials</a>
-          <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#faq">FAQ</a>
-          <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#signup">Signup</a>
+          {SHOW.features ? <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#features">Features</a> : null}
+          {SHOW.howItWorks ? <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#how-it-works">How it works</a> : null}
+          {SHOW.pricing ? <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#pricing">Pricing</a> : null}
+          {SHOW.testimonials ? <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#testimonials">Testimonials</a> : null}
+          {SHOW.faq ? <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#faq">FAQ</a> : null}
+          {SHOW.signup ? <a className="rounded-full border border-slate-200 px-3 py-2 text-sm text-slate-700" href="#signup">Signup</a> : null}
         </nav>
         <div className="grid gap-6 md:grid-cols-[1.2fr_0.8fr] md:items-center">
           <div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-slate-950">${brand.companyName}</h1>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">${copy.headline}</h2>
-            <p className="mt-3 text-slate-700">${copy.subheadline}</p>
-            <p className="mt-2 text-sm font-medium text-slate-500">${copy.trustStrip}</p>
+            <h1 className="text-4xl font-extrabold tracking-tight text-slate-950">${brief.brandName}</h1>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">${brief.hero.headline}</h2>
+            <p className="mt-3 text-slate-700">${brief.hero.subheadline}</p>
+            <p className="mt-2 text-sm font-medium text-slate-500">${brief.hero.trustStrip}</p>
             <div className="mt-5 flex flex-wrap gap-3">
-              <a className="rounded-2xl px-5 py-3 text-sm font-semibold text-white" style={{ backgroundColor: VISUAL.accent }} href="#signup">${copy.primaryCta}</a>
-              <button className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-800" onClick={() => setModalOpen(true)}>${copy.secondaryCta}</button>
+              <a className="rounded-2xl px-5 py-3 text-sm font-semibold text-white" style={{ backgroundColor: VISUAL.accent }} href="#signup">${brief.hero.primaryCta}</a>
+              <button className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-800" onClick={() => setModalOpen(true)}>${brief.hero.secondaryCta}</button>
             </div>
           </div>
           <div className="overflow-hidden rounded-2xl border border-slate-200">
@@ -1439,37 +2130,49 @@ export default function ${componentName(route)}() {
         </div>
       </div>
 
-      <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }}>
+      {SHOW.socialProof ? <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }}>
         <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Trusted by</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {SOCIAL_PROOF.map((item) => (
             <div key={item} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm font-semibold text-slate-700">{item}</div>
           ))}
         </div>
-      </div>
+      </div> : null}
 
-      <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="features">
+      {SHOW.features ? <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="features">
         <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Features</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {FEATURES.map((feature) => (
             <div key={feature} className="rounded-xl border border-slate-200 p-4 text-sm text-slate-700" style={{ backgroundColor: VISUAL.accentSoft }}>{feature}</div>
           ))}
         </div>
-      </div>
+      </div> : null}
 
-      <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="how-it-works">
+      {SHOW.howItWorks ? <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="how-it-works">
         <h2 className="text-2xl font-semibold tracking-tight text-slate-950">How it works</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {STEPS.map((item) => (
             <div key={item.title} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-sm font-semibold text-slate-900">{item.title}</p>
-              <p className="mt-2 text-sm text-slate-700">{item.body}</p>
+              <p className="mt-2 text-sm text-slate-700">{item.description}</p>
             </div>
           ))}
         </div>
-      </div>
+      </div> : null}
 
-      <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="pricing">
+      {SHOW.testimonials ? <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="testimonials">
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">What customers say</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {TESTIMONIALS.map((item) => (
+            <div key={item.author} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm text-slate-700">"{item.quote}"</p>
+              <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{item.author} · {item.role}</p>
+            </div>
+          ))}
+        </div>
+      </div> : null}
+
+      {SHOW.pricing ? <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="pricing">
         <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Pricing</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {PLANS.map((tier) => (
@@ -1480,21 +2183,9 @@ export default function ${componentName(route)}() {
             </button>
           ))}
         </div>
-      </div>
+      </div> : null}
 
-      <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="testimonials">
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">What customers say</h2>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {TESTIMONIALS.map((item) => (
-            <div key={item.author} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm text-slate-700">"{item.quote}"</p>
-              <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{item.author} · {item.role}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="faq">
+      {SHOW.faq ? <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="faq">
         <h2 className="text-2xl font-semibold tracking-tight text-slate-950">FAQ</h2>
         <div className="mt-4 grid gap-3">
           {FAQ.map((item) => (
@@ -1504,17 +2195,28 @@ export default function ${componentName(route)}() {
             </div>
           ))}
         </div>
-      </div>
+      </div> : null}
 
-      <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="signup">
-        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">${copy.signupTitle}</h2>
+      {SHOW.signup ? <div className="mt-6 rounded-[28px] border border-slate-200 p-6 shadow-sm" style={{ backgroundColor: VISUAL.card }} id="signup">
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-950">${brief.signup.title}</h2>
         <form className="mt-4 grid gap-3 md:grid-cols-2" onSubmit={onSubmit}>
           <input className="rounded-xl border border-slate-300 px-3 py-3" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" />
           <input className="rounded-xl border border-slate-300 px-3 py-3" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Work email" />
-          <button className="rounded-xl px-5 py-3 text-sm font-bold text-white md:justify-self-end" style={{ backgroundColor: VISUAL.accent }} type="submit">${copy.signupButton}</button>
+          <button className="rounded-xl px-5 py-3 text-sm font-bold text-white md:justify-self-end" style={{ backgroundColor: VISUAL.accent }} type="submit">${brief.signup.button}</button>
           <div className="md:col-span-2 text-sm">{submitted === "ok" ? <span className="text-emerald-700">Signup captured for {plan}.</span> : null}{submitted === "error" ? <span className="text-rose-700">Please enter a valid name and email.</span> : null}</div>
         </form>
-      </div>
+      </div> : null}
+
+      <footer className="mt-6 rounded-[28px] border border-slate-200 px-6 py-5 text-sm text-slate-600" style={{ backgroundColor: VISUAL.card }}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p>${brief.brandName} • Built for ${brief.targetAudience}</p>
+          <div className="flex flex-wrap gap-3">
+            <a className="hover:text-slate-900" href="#features">Features</a>
+            <a className="hover:text-slate-900" href="#pricing">Pricing</a>
+            <a className="hover:text-slate-900" href="#faq">FAQ</a>
+          </div>
+        </div>
+      </footer>
 
       {modalOpen ? (
         <div className="fixed inset-0 z-30 grid place-items-center bg-slate-950/45 p-4" role="dialog" aria-modal="true">
@@ -2582,9 +3284,13 @@ Mint details soon. Join the flock.
           : lower.includes("devtools")
             ? "AI + DevTools"
             : "AI + Builder";
-    const audience = lower.includes("engineering manager") || lower.includes("engineering managers")
-      ? "\n## Target Audience\nEngineering managers leading AI-enabled product and platform teams.\n"
-      : "";
+    const audience =
+      lower.includes("engineering manager") ||
+      lower.includes("engineering managers") ||
+      lower.includes("product engineering") ||
+      lower.includes("engineering audience")
+        ? "\n## Target Audience\nProduct engineering teams and engineering leaders building AI-enabled software.\n"
+        : "";
 
     const ideas = [
       "Toolchain of the Week",
