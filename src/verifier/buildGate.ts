@@ -213,6 +213,18 @@ function verifyLandingQuality(prompt: string, appSource: string): VerificationRe
     });
   }
 
+  const isPhysicalProductPrompt = /soda|drink|beverage|flavor|nutrition|ingredient|calorie|flower|floral|bouquet|plant|nursery/.test(promptLower);
+  if (isPhysicalProductPrompt) {
+    const monthlySaasPricing = /\$\d+\s*\/\s*mo\b|\$\d+\s*\/\s*month\b/.test(source);
+    checks.push({
+      step: "acceptance:landing:pricing-domain-fit",
+      ok: !monthlySaasPricing,
+      detail: !monthlySaasPricing
+        ? "OK"
+        : "Physical-product landing uses SaaS-style monthly pricing; expected pack/product pricing."
+    });
+  }
+
   return checks;
 }
 

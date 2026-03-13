@@ -222,7 +222,13 @@ function inferBehaviorOk(appType: AppType, searchable: string): boolean {
     case "landing":
       return includesAll(searchable, ["hero", "feature", "cta"]) || (searchable.includes("get started") && searchable.includes("feature"));
     case "game":
-      return includesAll(searchable, ["keyboard", "score", "restart"]) && searchable.includes("asteroid");
+      return (
+        includesAll(searchable, ["keyboard", "score", "restart"]) &&
+        (searchable.includes("asteroid") ||
+          searchable.includes("obstacle") ||
+          searchable.includes("downhill") ||
+          searchable.includes("coin"))
+      );
     case "story":
       return includesAll(searchable, ["choice", "ending", "story state"]) || searchable.includes("restart story");
     case "fallback":

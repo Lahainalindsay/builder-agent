@@ -15,7 +15,8 @@ export interface LookupItem {
     | "timezone"
     | "geocoding"
     | "docs"
-    | "exchange-rate";
+    | "exchange-rate"
+    | "web";
   summary: string;
   details: Record<string, unknown>;
   references: LookupReference[];
@@ -28,6 +29,51 @@ export interface LookupResult {
 
 interface FetchOptions {
   timeoutMs?: number;
+  headers?: Record<string, string>;
+}
+
+interface OpenAiSearchConfig {
+  provider: string;
+  apiKey: string;
+  model: string;
+  timeoutMs: number;
+}
+
+interface OpenAiSearchResponse {
+  output_text?: string;
+  output?: Array<{
+    content?: Array<{
+      type?: string;
+      text?: string;
+    }>;
+  }>;
+}
+
+interface FirecrawlConfig {
+  apiKey: string;
+  apiUrl: string;
+  timeoutMs: number;
+  maxResults: number;
+}
+
+interface FirecrawlSearchResponse {
+  success?: boolean;
+  data?: Array<{
+    title?: string;
+    url?: string;
+    description?: string;
+    markdown?: string;
+    content?: string;
+  }>;
+}
+
+interface FirecrawlScrapeResponse {
+  success?: boolean;
+  data?: {
+    markdown?: string;
+    content?: string;
+    metadata?: Record<string, unknown>;
+  };
 }
 
 const LOOKUP_BUDGET_MS = 12_000;
@@ -230,6 +276,76 @@ function detectDocPackages(prompt: string): string[] {
   return Array.from(new Set(found)).slice(0, 4);
 }
 
+function extractUrls(prompt: string): string[] {
+  const matches = prompt.match(/https?:\/\/[^\s)]+/gi) ?? [];
+  return Array.from(new Set(matches.map((value) => value.replace(/[.,;!?]+$/g, "")))).slice(0, 3);
+}
+
+function shouldUseFirecrawlSearch(prompt: string): boolean {
+  const lower = prompt.toLowerCase();
+  if (extractUrls(prompt).length > 0) return true;
+  return containsAny(lower, [
+    "latest",
+    "current",
+    "market analysis",
+    "research",
+    "search the web",
+    "look up",
+    "find sources",
+    "compare",
+    "scrape",
+    "website",
+    "web page",
+    "docs",
+    "documentation"
+  ]);
+}
+
+function firecrawlQueryFromPrompt(prompt: string): string {
+  const quoted = prompt.match(/["“]([^"”]{4,120})["”]/)?.[1];
+  if (quoted) return quoted.trim();
+  return prompt.replace(/\s+/g, " ").trim().slice(0, 180);
+}
+
+function readFirecrawlConfig(): FirecrawlConfig {
+  return {
+    apiKey: (process.env.FIRECRAWL_API_KEY ?? "").trim(),
+    apiUrl: (process.env.FIRECRAWL_API_URL ?? "https://api.firecrawl.dev").trim().replace(/\/+$/, ""),
+    timeoutMs: Math.max(1000, parseInt(process.env.FIRECRAWL_TIMEOUT_MS ?? "12000", 10) || 12000),
+    maxResults: Math.max(1, Math.min(10, parseInt(process.env.FIRECRAWL_MAX_RESULTS ?? "5", 10) || 5))
+  };
+}
+
+function canUseFirecrawl(config = readFirecrawlConfig()): boolean {
+  return config.apiKey.length > 0;
+}
+
+async function callFirecrawlJson<T>(
+  endpoint: string,
+  body: Record<string, unknown>,
+  config: FirecrawlConfig
+): Promise<T | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+  try {
+    const response = await fetch(`${config.apiUrl}${endpoint}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as T;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function fetchJson<T>(url: string, cache: Map<string, unknown>, options?: FetchOptions): Promise<T> {
   if (cache.has(url)) {
     return cache.get(url) as T;
@@ -240,7 +356,15 @@ async function fetchJson<T>(url: string, cache: Map<string, unknown>, options?: 
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const headers = new Headers(options?.headers ?? {});
+    if (url.includes("api.coingecko.com")) {
+      const demoKey = (process.env.COINGECKO_DEMO_API_KEY ?? "").trim();
+      if (demoKey) {
+        headers.set("x-cg-demo-api-key", demoKey);
+      }
+    }
+
+    const response = await fetch(url, { signal: controller.signal, headers });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -285,18 +409,38 @@ async function lookupCryptoMarket(prompt: string, cache: Map<string, unknown>): 
     return null;
   }
 
+  const isDefiPrompt = containsAny(lower, ["defi", "dex", "yield", "lending", "staking", "tvl"]);
   const globalUrl = "https://api.coingecko.com/api/v3/global";
-  const marketsUrl =
-    "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=5&page=1&sparkline=false&price_change_percentage=24h";
-  const [globalData, markets] = await Promise.all([
+  const marketsUrl = isDefiPrompt
+    ? "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=decentralized-finance-defi&order=market_cap_desc&per_page=5&page=1&sparkline=false&price_change_percentage=24h"
+    : "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=5&page=1&sparkline=false&price_change_percentage=24h";
+  const defiGlobalUrl = "https://api.coingecko.com/api/v3/global/decentralized_finance_defi";
+  const categoriesUrl = "https://api.coingecko.com/api/v3/coins/categories";
+
+  const [globalResult, marketsResult, defiGlobalResult, categoriesResult] = await Promise.allSettled([
     fetchJson<{ data?: Record<string, unknown> }>(globalUrl, cache),
-    fetchJson<Array<Record<string, unknown>>>(marketsUrl, cache)
+    fetchJson<Array<Record<string, unknown>>>(marketsUrl, cache),
+    isDefiPrompt ? fetchJson<{ data?: Record<string, unknown> }>(defiGlobalUrl, cache) : Promise.resolve(null),
+    isDefiPrompt ? fetchJson<Array<Record<string, unknown>>>(categoriesUrl, cache) : Promise.resolve(null)
   ]);
 
-  const global = globalData.data ?? {};
+  const global = globalResult.status === "fulfilled" ? globalResult.value?.data ?? {} : {};
+  const markets = marketsResult.status === "fulfilled" ? marketsResult.value : [];
+  const defiGlobal = isDefiPrompt && defiGlobalResult.status === "fulfilled" ? defiGlobalResult.value?.data ?? {} : {};
+  const categories = isDefiPrompt && categoriesResult.status === "fulfilled" ? categoriesResult.value ?? [] : [];
   const totalCap = (global.total_market_cap as { usd?: number } | undefined)?.usd;
   const totalVolume = (global.total_volume as { usd?: number } | undefined)?.usd;
   const btcDominance = (global.market_cap_percentage as { btc?: number } | undefined)?.btc;
+  const defiMarketCap = parseNumeric(defiGlobal.defi_market_cap);
+  const defiVolume24h = parseNumeric(defiGlobal.trading_volume_24h);
+  const defiDominance = parseNumeric(defiGlobal.defi_dominance);
+  const defiToEthRatio = parseNumeric(defiGlobal.defi_to_eth_ratio);
+  const topDefiCoinName = typeof defiGlobal.top_coin_name === "string" ? defiGlobal.top_coin_name : null;
+  const topDefiCoinDominance = parseNumeric(defiGlobal.top_coin_defi_dominance);
+  const defiCategory = categories.find((category) => String(category.id ?? "") === "decentralized-finance-defi");
+  const categoryCap = Number(defiCategory?.market_cap ?? 0) || null;
+  const categoryVolume = Number(defiCategory?.volume_24h ?? 0) || null;
+
   const leaders = markets
     .slice(0, 5)
     .map((coin) => {
@@ -310,16 +454,39 @@ async function lookupCryptoMarket(prompt: string, cache: Map<string, unknown>): 
   const capText = typeof totalCap === "number" ? `$${Math.round(totalCap).toLocaleString()}` : "n/a";
   const volumeText = typeof totalVolume === "number" ? `$${Math.round(totalVolume).toLocaleString()}` : "n/a";
   const domText = typeof btcDominance === "number" ? `${btcDominance.toFixed(2)}%` : "n/a";
+  const defiCapText = typeof defiMarketCap === "number" ? `$${Math.round(defiMarketCap).toLocaleString()}` : "n/a";
+  const defiVolumeText = typeof defiVolume24h === "number" ? `$${Math.round(defiVolume24h).toLocaleString()}` : "n/a";
+  const defiDomText = typeof defiDominance === "number" ? `${defiDominance.toFixed(2)}%` : "n/a";
+  const defiEthRatioText = typeof defiToEthRatio === "number" ? `${defiToEthRatio.toFixed(2)}%` : "n/a";
+  const topDefiDominanceText = typeof topDefiCoinDominance === "number" ? `${topDefiCoinDominance.toFixed(2)}%` : "n/a";
+
+  if (!markets.length && totalCap == null && defiMarketCap == null) {
+    const openAiFallback = await lookupCryptoMarketViaOpenAiSearch(prompt);
+    if (openAiFallback) return openAiFallback;
+    throw new Error("No market data was returned from CoinGecko.");
+  }
 
   return {
     type: "market",
-    summary: `Crypto market snapshot: total cap ${capText}, 24h volume ${volumeText}, BTC dominance ${domText}. Top movers/liquidity leaders: ${leaders}`,
+    summary: isDefiPrompt
+      ? `DeFi market snapshot: DeFi cap ${defiCapText}, 24h DeFi volume ${defiVolumeText}, DeFi dominance ${defiDomText}, DeFi/ETH ratio ${defiEthRatioText}, top DeFi coin ${topDefiCoinName ?? "n/a"} (${topDefiDominanceText} of DeFi market cap). Leading DeFi assets: ${leaders || "n/a"}`
+      : `Crypto market snapshot: total cap ${capText}, 24h volume ${volumeText}, BTC dominance ${domText}. Top movers/liquidity leaders: ${leaders}`,
     details: {
       global: {
         totalMarketCapUsd: totalCap ?? null,
         totalVolumeUsd: totalVolume ?? null,
         btcDominancePct: btcDominance ?? null
       },
+      defi: isDefiPrompt
+        ? {
+            defiMarketCapUsd: defiMarketCap ?? categoryCap,
+            tradingVolume24hUsd: defiVolume24h ?? categoryVolume,
+            defiDominancePct: defiDominance ?? null,
+            defiToEthRatioPct: defiToEthRatio ?? null,
+            topCoinName: topDefiCoinName,
+            topCoinDefiDominancePct: topDefiCoinDominance ?? null
+          }
+        : null,
       topMarkets: markets.map((coin) => ({
         id: coin.id,
         symbol: coin.symbol,
@@ -332,9 +499,155 @@ async function lookupCryptoMarket(prompt: string, cache: Map<string, unknown>): 
     },
     references: [
       { label: "CoinGecko Global API", url: globalUrl },
-      { label: "CoinGecko Markets API", url: marketsUrl }
+      { label: "CoinGecko Markets API", url: marketsUrl },
+      ...(isDefiPrompt
+        ? [
+            { label: "CoinGecko Global DeFi API", url: defiGlobalUrl },
+            { label: "CoinGecko Categories API", url: categoriesUrl }
+          ]
+        : [])
     ]
   };
+}
+
+function parseNumeric(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function readOpenAiSearchConfig(): OpenAiSearchConfig {
+  return {
+    provider: (process.env.LLM_PROVIDER ?? "").trim().toLowerCase(),
+    apiKey: (process.env.OPENAI_API_KEY ?? "").trim(),
+    model: (process.env.LLM_SEARCH_MODEL ?? "gpt-4o-mini").trim(),
+    timeoutMs: Math.max(1000, parseInt(process.env.LLM_TIMEOUT_MS ?? "8000", 10) || 8000)
+  };
+}
+
+function canUseOpenAiSearch(config = readOpenAiSearchConfig()): boolean {
+  return config.provider === "openai" && config.apiKey.length > 0;
+}
+
+async function lookupCryptoMarketViaOpenAiSearch(prompt: string): Promise<LookupItem | null> {
+  const config = readOpenAiSearchConfig();
+  if (!canUseOpenAiSearch(config)) return null;
+
+  const response = await callOpenAiWebSearchJson(
+    [
+      "Search the web for current crypto/DeFi market data and return strict JSON only.",
+      "Do not invent figures. Only include values supported by the search results.",
+      "Schema:",
+      "{",
+      '  "summary": "string",',
+      '  "metrics": {',
+      '    "total_market_cap_usd": "string|null",',
+      '    "total_volume_24h_usd": "string|null",',
+      '    "btc_dominance_pct": "string|null",',
+      '    "defi_market_cap_usd": "string|null",',
+      '    "defi_volume_24h_usd": "string|null",',
+      '    "defi_dominance_pct": "string|null"',
+      "  },",
+      '  "leaders": [{ "name": "string", "price_usd": "string|null", "change_24h_pct": "string|null", "note": "string" }],',
+      '  "references": [{ "label": "string", "url": "string" }]',
+      "}"
+    ].join("\n"),
+    prompt,
+    config
+  );
+  if (!response || typeof response !== "object") return null;
+
+  const raw = response as {
+    summary?: unknown;
+    metrics?: Record<string, unknown>;
+    leaders?: Array<Record<string, unknown>>;
+    references?: Array<Record<string, unknown>>;
+  };
+  const summary = typeof raw.summary === "string" ? raw.summary.trim() : "";
+  const leaders = Array.isArray(raw.leaders) ? raw.leaders : [];
+  const references = Array.isArray(raw.references)
+    ? raw.references
+        .map((ref) => ({
+          label: typeof ref.label === "string" ? ref.label.trim() : "",
+          url: typeof ref.url === "string" ? ref.url.trim() : ""
+        }))
+        .filter((ref) => ref.label && ref.url)
+        .slice(0, 6)
+    : [];
+  if (!summary) return null;
+
+  return {
+    type: "market",
+    summary,
+    details: {
+      metrics: raw.metrics ?? {},
+      leaders: leaders.slice(0, 5)
+    },
+    references
+  };
+}
+
+async function callOpenAiWebSearchJson(
+  instructions: string,
+  input: string,
+  config: OpenAiSearchConfig
+): Promise<unknown | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify({
+        model: config.model,
+        instructions,
+        input,
+        tools: [{ type: "web_search_preview", search_context_size: "medium" }]
+      }),
+      signal: controller.signal
+    });
+    if (!response.ok) return null;
+    const payload = (await response.json()) as OpenAiSearchResponse;
+    const text = extractOpenAiResponseText(payload);
+    if (!text) return null;
+    return parseJsonLoose(text);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function extractOpenAiResponseText(payload: OpenAiSearchResponse): string {
+  if (typeof payload.output_text === "string" && payload.output_text.trim()) {
+    return payload.output_text.trim();
+  }
+  return (payload.output ?? [])
+    .flatMap((item) => item.content ?? [])
+    .map((part) => (typeof part.text === "string" ? part.text : ""))
+    .join("")
+    .trim();
+}
+
+function parseJsonLoose(text: string): unknown | null {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
 }
 
 async function lookupGitHub(prompt: string, cache: Map<string, unknown>): Promise<LookupItem | null> {
@@ -506,6 +819,78 @@ async function lookupExchangeRates(prompt: string, cache: Map<string, unknown>):
   };
 }
 
+async function lookupFirecrawl(prompt: string): Promise<LookupItem[]> {
+  const config = readFirecrawlConfig();
+  if (!canUseFirecrawl(config) || !shouldUseFirecrawlSearch(prompt)) return [];
+
+  const items: LookupItem[] = [];
+  const urls = extractUrls(prompt);
+  if (urls.length > 0) {
+    for (const url of urls) {
+      const response = await callFirecrawlJson<FirecrawlScrapeResponse>(
+        "/v1/scrape",
+        { url, formats: ["markdown"] },
+        config
+      );
+      const markdown = response?.data?.markdown?.trim() ?? response?.data?.content?.trim() ?? "";
+      if (!markdown) continue;
+      const snippet = markdown.replace(/\s+/g, " ").slice(0, 320);
+      items.push({
+        type: "web",
+        summary: `Scraped ${url}: ${snippet}${markdown.length > 320 ? "..." : ""}`,
+        details: {
+          url,
+          metadata: response?.data?.metadata ?? {},
+          excerpt: snippet
+        },
+        references: [{ label: "Firecrawl scrape", url }]
+      });
+    }
+  }
+
+  const searchQuery = firecrawlQueryFromPrompt(prompt);
+  const searchResponse = await callFirecrawlJson<FirecrawlSearchResponse>(
+    "/v1/search",
+    {
+      query: searchQuery,
+      limit: config.maxResults,
+      scrapeOptions: {
+        formats: ["markdown"]
+      }
+    },
+    config
+  );
+  const results = searchResponse?.data ?? [];
+  if (results.length > 0) {
+    const refs = results
+      .filter((result) => typeof result.url === "string" && result.url.trim())
+      .slice(0, config.maxResults)
+      .map((result, index) => ({
+        label: result.title?.trim() || `Firecrawl result ${index + 1}`,
+        url: result.url!.trim()
+      }));
+    const summary = results
+      .slice(0, 3)
+      .map((result) => {
+        const title = result.title?.trim() || result.url?.trim() || "Untitled";
+        const description = result.description?.trim() || result.markdown?.replace(/\s+/g, " ").slice(0, 120) || "";
+        return `${title}${description ? ` — ${description}` : ""}`;
+      })
+      .join(" | ");
+    items.push({
+      type: "web",
+      summary: `Web search results for "${searchQuery}": ${summary}`,
+      details: {
+        query: searchQuery,
+        results: results.slice(0, config.maxResults)
+      },
+      references: refs
+    });
+  }
+
+  return items;
+}
+
 export async function runExternalLookups(prompt: string): Promise<LookupResult> {
   const cache = new Map<string, unknown>();
   const items: LookupItem[] = [];
@@ -606,6 +991,16 @@ export async function runExternalLookups(prompt: string): Promise<LookupResult> 
   const defaultActions: LookupAction[] = ["price", "market", "github", "weather", "docs", "exchange-rate"];
   const actionsToRun = useRuleDrivenActions ? Array.from(ruleActions) : defaultActions;
   const tasks: Array<Promise<void>> = actionsToRun.map((action) => runActionTask(action));
+  tasks.push(
+    (async () => {
+      try {
+        const firecrawlItems = await lookupFirecrawl(prompt);
+        items.push(...firecrawlItems);
+      } catch (error) {
+        warnings.push(`firecrawl lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    })()
+  );
 
   if (useRuleDrivenActions && !tasks.length) {
     warnings.push("Lookup rules loaded but no actionable integrations were parsed.");

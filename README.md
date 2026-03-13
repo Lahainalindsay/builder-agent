@@ -81,6 +81,20 @@ PUSHER_CLUSTER=us2
 LOG_LEVEL=info
 ```
 
+Optional research providers:
+
+```bash
+LLM_PROVIDER=openai
+OPENAI_API_KEY=...
+LLM_MODEL=gpt-4.1-mini
+LLM_SEARCH_MODEL=gpt-4o-mini
+COINGECKO_DEMO_API_KEY=...
+FIRECRAWL_API_KEY=...
+FIRECRAWL_API_URL=https://api.firecrawl.dev
+FIRECRAWL_TIMEOUT_MS=12000
+FIRECRAWL_MAX_RESULTS=5
+```
+
 ### 2) Start listening
 
 ```bash
@@ -149,6 +163,21 @@ The agent runs a lightweight verification pass before zipping:
 Notes:
 - In network-restricted environments, `npm install` may be skipped safely.
 - The zip must still contain a complete, runnable project structure.
+- Research-heavy prompts can optionally use CoinGecko, OpenAI web search, and Firecrawl when those providers are configured.
+
+## Research Providers
+
+The lookup layer is tiered:
+- Structured APIs first for narrow data problems like crypto prices / market snapshots.
+- OpenAI web search as a fallback for current-data synthesis when `LLM_PROVIDER=openai`.
+- Firecrawl for explicit URL scraping and broad web/source discovery on research-heavy prompts.
+
+Firecrawl is optional. When `FIRECRAWL_API_KEY` is set, the agent can:
+- scrape pages referenced directly in a prompt
+- search the web for source pages related to research prompts
+- inject those source summaries back into the content-pack generation flow
+
+If outbound network access is blocked, generation still completes, but lookup-backed sections degrade gracefully with explicit limitations.
 
 ---
 

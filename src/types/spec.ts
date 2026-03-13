@@ -93,6 +93,7 @@ export interface PromptSpec {
   intent?: PromptIntent;
   promptStructure?: PromptStructure;
   llmAssist?: ContentLlmAssist;
+  landingLlmAssist?: LandingLlmAssist;
   acceptanceChecks: AcceptanceCheck[];
 }
 
@@ -177,6 +178,40 @@ export interface ContentLlmAssist {
   variants: string[];
   checklist: string[];
   keywords: string[];
+}
+
+export interface LandingLlmAssist {
+  brandName: string;
+  tagline?: string;
+  hero: {
+    headline: string;
+    subheadline: string;
+    primaryCta: string;
+    secondaryCta?: string;
+  };
+  sections: {
+    features: Array<{ title: string; description: string }>;
+    socialProof?: string[];
+    testimonials: Array<{ quote: string; author: string; role: string }>;
+    pricing: Array<{ name: string; price: string; blurb: string }>;
+    faq: Array<{ q: string; a: string }>;
+  };
+  signup: {
+    title: string;
+    button: string;
+    fields: Array<{ name: "name" | "email"; label: string; placeholder: string }>;
+    successMessage: string;
+  };
+  style: {
+    vibeKeywords: string[];
+    accentHex: string;
+    heroImageQuery: string;
+    iconMotif?: "bolt" | "leaf" | "shield" | "sparkles" | "rocket" | "compass";
+  };
+  compliance: {
+    noFakeClaims: true;
+    noCustomerLogos: true;
+  };
 }
 
 export interface GeneratedFile {

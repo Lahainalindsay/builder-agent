@@ -917,7 +917,7 @@ function buildPromptDrivenLandingCopy(
         ? { name: "Variety Box", price: "$49", blurb: "Mixed flavors with nutrition-friendly options included." }
         : { name: "Growth", price: "$79/mo", blurb: `Expanded automation and reporting for active ${domainTerm} operations.` },
       isConsumerProduct
-        ? { name: "Monthly Club", price: "$39/mo", blurb: "Recurring flavor drops with flexible delivery cadence." }
+        ? { name: "Monthly Club", price: "$39 / delivery", blurb: "Recurring flavor drops with flexible delivery cadence." }
         : { name: "Scale", price: "$199/mo", blurb: `Advanced controls for multi-team ${domainTerm} execution.` }
     ],
     testimonials: [
@@ -1248,8 +1248,54 @@ function inferLandingVisualModel(spec: PromptSpec): {
   bg: string;
   card: string;
   heroImage: string;
+  heroFallback: string;
 } {
+  function buildHeroImageQueryTags(): string[] {
+    const lowerPrompt = spec.rawPrompt.toLowerCase();
+    const domain = spec.intent?.domain ?? "generic";
+    const tags: string[] = [];
+    if (domain === "invoicing" || domain === "accounting") tags.push("workspace", "laptop", "invoice");
+    else if (domain === "real_estate") tags.push("house", "interior", "real-estate");
+    else if (domain === "devtools") tags.push("developer", "code", "terminal");
+    else if (domain === "customer_support") tags.push("support", "team", "helpdesk");
+    else if (domain === "crypto_web3") tags.push("blockchain", "technology", "network");
+    else tags.push("product", "brand");
+
+    const isDrink = /\b(drink|beverage|soda|coffee|tea|brew|brewery|sparkling|flavor)\b/.test(lowerPrompt);
+    if (isDrink) {
+      tags.push("drink", "beverage");
+      if (/\bcoffee\b|\bespresso\b|\blatte\b/.test(lowerPrompt)) tags.push("coffee");
+      if (/\btea\b|\bmatcha\b/.test(lowerPrompt)) tags.push("tea");
+      if (/\bsoda\b|\bsparkling\b/.test(lowerPrompt)) tags.push("soda");
+      if (/\btrail\b|\boutdoor\b|\bhike\b|\bcamp\b/.test(lowerPrompt)) tags.push("outdoors");
+      if (/\bnutrition\b|\bingredients\b|\bcalories\b/.test(lowerPrompt)) tags.push("nutrition", "label");
+      if (/\bcan\b|\bbottle\b/.test(lowerPrompt)) tags.push("can", "bottle");
+    }
+    return Array.from(new Set(tags.map((tag) => tag.replace(/\s+/g, "-")))).slice(0, 6);
+  }
+
+  function unsplashSourceUrl(tags: string[]): string {
+    const query = encodeURIComponent(tags.join(","));
+    return `https://source.unsplash.com/1600x900/?${query}`;
+  }
+
+  function svgFallbackDataUri(accent: string, bg: string, label: string): string {
+    const safeLabel = label.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${bg}"/><stop offset="100%" stop-color="#ffffff"/></linearGradient></defs><rect width="1600" height="900" fill="url(#g)"/><circle cx="1180" cy="240" r="180" fill="${accent}" opacity="0.18"/><rect x="180" y="210" width="560" height="340" rx="24" fill="#ffffff" stroke="${accent}" stroke-opacity="0.35" stroke-width="3"/><rect x="230" y="280" width="460" height="28" rx="8" fill="${accent}" opacity="0.2"/><rect x="230" y="330" width="360" height="20" rx="6" fill="${accent}" opacity="0.14"/><rect x="230" y="365" width="390" height="20" rx="6" fill="${accent}" opacity="0.14"/><text x="230" y="500" fill="#0f172a" font-size="48" font-family="Segoe UI, Arial, sans-serif" font-weight="700">${safeLabel}</text></svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  }
+
+  function resolveHeroVisual(accent: string, bg: string): { heroImage: string; heroFallback: string } {
+    const tags = buildHeroImageQueryTags();
+    const label = spec.intent?.brandName || spec.appName || "Product";
+    const heroFallback = svgFallbackDataUri(accent, bg, label);
+    const enableLookup = (process.env.ENABLE_IMAGE_LOOKUP ?? "true").toLowerCase() !== "false";
+    if (enableLookup) return { heroImage: unsplashSourceUrl(tags), heroFallback };
+    return { heroImage: heroFallback, heroFallback };
+  }
+
   const lower = spec.rawPrompt.toLowerCase();
+  const isConsumerProduct = /soda|drink|beverage|flavor|flavors|nutrition|ingredients|calories|cans|bottles/.test(lower);
   const isWeb3 = /web3|crypto|defi|wallet|token|on-chain|onchain/.test(lower);
   const isInvoicing = /invoice|invoicing|billing|freelancer|payments?/.test(lower);
   const isAccounting = /accounting|bookkeeping|reconcile|general ledger|expense|receipt|close the books/.test(lower);
@@ -1258,71 +1304,97 @@ function inferLandingVisualModel(spec: PromptSpec): {
   const isPlayfulMerch = /joke|fun|sarcastic|comeback|shirt|sticker|meme/.test(lower);
 
   if (isLandscaping) {
+    const accent = "#0f766e";
+    const bg = "#f0fdf4";
     return {
-      accent: "#0f766e",
+      accent,
       accentSoft: "#ccfbf1",
-      bg: "#f0fdf4",
+      bg,
       card: "#ffffff",
-      heroImage: "https://images.unsplash.com/photo-1501004318641-b39e6451bec6?auto=format&fit=crop&w=1800&q=80"
+      ...resolveHeroVisual(accent, bg)
     };
   }
 
   if (isFlowers) {
+    const accent = "#be185d";
+    const bg = "#fdf2f8";
     return {
-      accent: "#be185d",
+      accent,
       accentSoft: "#fce7f3",
-      bg: "#fdf2f8",
+      bg,
       card: "#ffffff",
-      heroImage: "https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=1800&q=80"
+      ...resolveHeroVisual(accent, bg)
+    };
+  }
+
+  if (isConsumerProduct) {
+    const accent = "#0f766e";
+    const bg = "#f0fdfa";
+    return {
+      accent,
+      accentSoft: "#ccfbf1",
+      bg,
+      card: "#ffffff",
+      ...resolveHeroVisual(accent, bg)
     };
   }
 
   if (isWeb3) {
+    const accent = "#0ea5e9";
+    const bg = "#f8fafc";
     return {
-      accent: "#0ea5e9",
+      accent,
       accentSoft: "#e0f2fe",
-      bg: "#f8fafc",
+      bg,
       card: "#ffffff",
-      heroImage: "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?auto=format&fit=crop&w=1800&q=80"
+      ...resolveHeroVisual(accent, bg)
     };
   }
 
   if (isAccounting) {
+    const accent = "#0f766e";
+    const bg = "#f8fafc";
     return {
-      accent: "#0f766e",
+      accent,
       accentSoft: "#ccfbf1",
-      bg: "#f8fafc",
+      bg,
       card: "#ffffff",
-      heroImage: "https://images.unsplash.com/photo-1554224154-22dec7ec8818?auto=format&fit=crop&w=1800&q=80"
+      ...resolveHeroVisual(accent, bg)
     };
   }
 
   if (isPlayfulMerch) {
+    const accent = "#db2777";
+    const bg = "#fff7ed";
     return {
-      accent: "#db2777",
+      accent,
       accentSoft: "#fce7f3",
-      bg: "#fff7ed",
+      bg,
       card: "#ffffff",
-      heroImage: "https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?auto=format&fit=crop&w=1800&q=80"
+      ...resolveHeroVisual(accent, bg)
     };
   }
 
   if (isInvoicing) {
+    const accent = "#0891b2";
+    const bg = "#f0fdfa";
     return {
-      accent: "#0891b2",
+      accent,
       accentSoft: "#cffafe",
-      bg: "#f0fdfa",
+      bg,
       card: "#ffffff",
-      heroImage: "https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=1800&q=80"
+      ...resolveHeroVisual(accent, bg)
     };
   }
 
+  const accent = "#2563eb";
+  const bg = "#f8fafc";
   return {
-    accent: "#2563eb",
+    accent,
     accentSoft: "#dbeafe",
-    bg: "#f8fafc",
+    bg,
     card: "#ffffff",
-    heroImage: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1800&q=80"
+    ...resolveHeroVisual(accent, bg)
   };
 }
 
@@ -1510,7 +1582,7 @@ type LandingBrief = {
     socialProof: boolean;
   };
   theme: { primary: string; accentSoft: string; background: string; card: string };
-  heroImage: { kind: "url"; value: string };
+  heroImage: { kind: "url"; value: string; fallback: string };
 };
 
 type LandingSection = "hero" | "features" | "howItWorks" | "testimonials" | "pricing" | "faq" | "signup" | "socialProof";
@@ -1632,11 +1704,10 @@ function inferLandingBrief(spec: PromptSpec): LandingBrief {
     spec.rawPrompt,
     refineLandingBrandName(candidate, spec.rawPrompt)
   );
-  const copy = inferLandingCopyModel(spec, brand);
-  const visual = inferLandingVisualModel(spec);
-  const theme = inferLandingThemePack(spec, brand, copy);
   const lower = spec.rawPrompt.toLowerCase();
   const sections = sectionSet(spec);
+  const visual = inferLandingVisualModel(spec);
+  const llm = spec.landingLlmAssist;
 
   const isConsumerProduct = /soda|drink|beverage|flavor|flavors|nutrition|ingredients|calories|cans|bottles/.test(lower);
 
@@ -1674,6 +1745,62 @@ function inferLandingBrief(spec: PromptSpec): LandingBrief {
       : productCategory === "web3 growth"
         ? ["Higher conversion", "Clear onboarding", "Campaign-ready launch blocks"]
         : ["Faster onboarding", "Clear positioning", "Conversion-focused structure"];
+
+  if (llm) {
+    const motifIcons = ["Bolt", "Leaf", "Shield", "Sparkles", "Rocket", "Compass"] as const;
+    const iconOffset = llm.style.iconMotif
+      ? Math.max(0, motifIcons.findIndex((item) => item.toLowerCase() === llm.style.iconMotif))
+      : 0;
+
+    return {
+      brandName: finalizeBrandName(spec.rawPrompt, llm.brandName),
+      productType: spec.intent?.productType ?? spec.promptStructure?.subjectDescriptor ?? "product experience",
+      productCategory,
+      targetAudience,
+      painPoints,
+      valueProps,
+      features: llm.sections.features.slice(0, 6).map((feature, index) => ({
+        title: feature.title || `Feature ${index + 1}`,
+        description: feature.description,
+        icon: motifIcons[(index + iconOffset) % motifIcons.length]
+      })),
+      howItWorks: llm.sections.features.slice(0, 3).map((feature, index) => ({
+        title: `${index + 1}. ${feature.title || "Step"}`,
+        description: feature.description
+      })),
+      testimonials: llm.sections.testimonials,
+      pricing: llm.sections.pricing,
+      faqs: llm.sections.faq.slice(0, 6),
+      socialProof: (llm.sections.socialProof ?? []).length ? (llm.sections.socialProof ?? []).slice(0, 4) : [targetAudience, "Returning customers", "Referral buyers", "Community members"],
+      hero: {
+        headline: llm.hero.headline,
+        subheadline: llm.hero.subheadline,
+        primaryCta: llm.hero.primaryCta,
+        secondaryCta: llm.hero.secondaryCta ?? "Learn more",
+        trustStrip: llm.tagline?.trim() || "Specific, prompt-aligned copy generated with structured constraints."
+      },
+      signup: { title: llm.signup.title, button: llm.signup.button },
+      requestedSections: {
+        features: hasSection(sections, LANDING_SECTION_SYNONYMS.features),
+        howItWorks: hasSection(sections, LANDING_SECTION_SYNONYMS.howItWorks),
+        testimonials: hasSection(sections, LANDING_SECTION_SYNONYMS.testimonials),
+        pricing: hasSection(sections, LANDING_SECTION_SYNONYMS.pricing),
+        faq: hasSection(sections, LANDING_SECTION_SYNONYMS.faq),
+        signup: hasSection(sections, LANDING_SECTION_SYNONYMS.signup),
+        socialProof: hasSection(sections, LANDING_SECTION_SYNONYMS.socialProof)
+      },
+      theme: {
+        primary: llm.style.accentHex,
+        accentSoft: visual.accentSoft,
+        background: visual.bg,
+        card: visual.card
+      },
+      heroImage: { kind: "url", value: visual.heroImage, fallback: visual.heroFallback }
+    };
+  }
+
+  const copy = inferLandingCopyModel(spec, brand);
+  const theme = inferLandingThemePack(spec, brand, copy);
 
   return {
     brandName: brand.companyName,
@@ -1715,7 +1842,7 @@ function inferLandingBrief(spec: PromptSpec): LandingBrief {
       background: visual.bg,
       card: visual.card
     },
-    heroImage: { kind: "url", value: visual.heroImage }
+    heroImage: { kind: "url", value: visual.heroImage, fallback: visual.heroFallback }
   };
 }
 
@@ -1923,31 +2050,10 @@ export default function ${componentName(route)}() {
 
 function landingPage(spec: PromptSpec, route: RouteSpec, index: number): string {
   const lowerPrompt = spec.rawPrompt.toLowerCase();
-  const offroadStrong = [
-    /\boff[-\s]?road\b/,
-    /\bdirt\s*bike\b/,
-    /\bdirtbike\b/,
-    /\batv\b/,
-    /\b4x4\b/,
-    /\boverland(ing)?\b/,
-    /\bmotocross\b/,
-    /\bjeep\b/
-  ];
-
-  const offroadWeak = [
-    /\btrails?\b/,
-    /\btrail\s+guide\b/,
-    /\bwaypoints?\b/,
-    /\bgpx\b/,
-    /\bterrain\b/,
-    /\bmaps?\b/,
-    /\bweather\b/,
-    /\broutes?\b/
-  ];
-
-  const strongHits = offroadStrong.filter((re) => re.test(lowerPrompt)).length;
-  const weakHits = offroadWeak.filter((re) => re.test(lowerPrompt)).length;
-  const isOffroad = strongHits >= 1 || weakHits >= 2;
+  const isConsumerProductPrompt = /soda|drink|beverage|flavor|flavors|nutrition|ingredients|calories|cans|bottles|brew|brewery|sparkling/.test(lowerPrompt);
+  const hasStrongOffroad = /(offroad|off-road|dirt\s*bike|dirtbike|atv|4x4|overland|motocross|jeep)\b/.test(lowerPrompt);
+  const hasTrailNavigationCombo = /\btrail\b/.test(lowerPrompt) && /\b(map|maps|gps|route|routes|weather|conditions|waypoints?)\b/.test(lowerPrompt);
+  const isOffroad = !isConsumerProductPrompt && (hasStrongOffroad || hasTrailNavigationCombo);
   const githubRepoUrl = spec.rawPrompt.match(/https?:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+/i)?.[0];
 
   if (isOffroad) {
@@ -2079,8 +2185,12 @@ export default function ${componentName(route)}() {
 
 const FEATURES = ${JSON.stringify(brief.features.map((item) => item.description))} as const;
 const TESTIMONIALS = ${JSON.stringify(brief.testimonials)} as const;
-const PLANS = ${JSON.stringify(brief.pricing)} as const;
-const VISUAL = ${JSON.stringify({ accent: brief.theme.primary, accentSoft: brief.theme.accentSoft, bg: brief.theme.background, card: brief.theme.card, heroImage: brief.heroImage.value })} as const;
+const PLANS = ${JSON.stringify(brief.pricing)} as ReadonlyArray<{
+  name: string;
+  price: string;
+  blurb: string;
+}>;
+const VISUAL = ${JSON.stringify({ accent: brief.theme.primary, accentSoft: brief.theme.accentSoft, bg: brief.theme.background, card: brief.theme.card, heroImage: brief.heroImage.value, heroFallback: brief.heroImage.fallback })} as const;
 const SOCIAL_PROOF = ${JSON.stringify(brief.socialProof)} as const;
 const STEPS = ${JSON.stringify(brief.howItWorks)} as const;
 const FAQ = ${JSON.stringify(brief.faqs)} as const;
@@ -2088,7 +2198,8 @@ const SHOW = ${JSON.stringify(brief.requestedSections)} as const;
 
 export default function ${componentName(route)}() {
   const [modalOpen, setModalOpen] = useState(false);
-  const [plan, setPlan] = useState(PLANS[1]?.name ?? PLANS[0]?.name ?? "Starter");
+  const [plan, setPlan] = useState<string>(PLANS[1]?.name ?? PLANS[0]?.name ?? "Starter");
+  const [heroImageSrc, setHeroImageSrc] = useState<string>(VISUAL.heroImage);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState<null | "ok" | "error">(null);
@@ -2125,7 +2236,7 @@ export default function ${componentName(route)}() {
             </div>
           </div>
           <div className="overflow-hidden rounded-2xl border border-slate-200">
-            <img src={VISUAL.heroImage} alt="Product preview" className="h-64 w-full object-cover" />
+            <img src={heroImageSrc} alt="Product preview" className="h-64 w-full object-cover" onError={() => setHeroImageSrc(VISUAL.heroFallback)} />
           </div>
         </div>
       </div>
@@ -2595,6 +2706,257 @@ export default function ${componentName(route)}() {
 }
 
 function gamePage(spec: PromptSpec): string {
+  const lowerPrompt = spec.rawPrompt.toLowerCase();
+  const isSkiGame = /\bski|downhill|slalom|snow\b/.test(lowerPrompt);
+
+  if (isSkiGame) {
+    return `import { useEffect, useMemo, useRef, useState } from "react";
+
+type Obstacle = { id: number; lane: number; y: number; speed: number };
+type Coin = { id: number; lane: number; y: number; speed: number };
+
+const WIDTH = 600;
+const HEIGHT = 560;
+const LANE_COUNT = 7;
+const LANE_WIDTH = Math.floor(WIDTH / LANE_COUNT);
+const PLAYER_SIZE = 34;
+const OBSTACLE_SIZE = 36;
+const COIN_SIZE = 20;
+
+export default function App() {
+  const [playerLane, setPlayerLane] = useState(Math.floor(LANE_COUNT / 2));
+  const [obstacles, setObstacles] = useState<Obstacle[]>([]);
+  const [coins, setCoins] = useState<Coin[]>([]);
+  const [score, setScore] = useState(0);
+  const [coinCount, setCoinCount] = useState(0);
+  const [distance, setDistance] = useState(0);
+  const [running, setRunning] = useState(true);
+  const [leftPressed, setLeftPressed] = useState(false);
+  const [rightPressed, setRightPressed] = useState(false);
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const obstacleId = useRef(1);
+  const coinId = useRef(1);
+  const startMs = useRef<number | null>(null);
+
+  const difficultyLevel = Math.floor(elapsedSec / 30) + 1;
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") setLeftPressed(true);
+      if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") setRightPressed(true);
+      if (event.key === "r" && !running) restartGame();
+    }
+
+    function onKeyUp(event: KeyboardEvent) {
+      if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") setLeftPressed(false);
+      if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") setRightPressed(false);
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [running]);
+
+  useEffect(() => {
+    if (!running) return;
+    if (startMs.current === null) startMs.current = Date.now();
+    const timer = window.setInterval(() => {
+      if (startMs.current === null) return;
+      setElapsedSec(Math.floor((Date.now() - startMs.current) / 1000));
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [running]);
+
+  useEffect(() => {
+    if (!running) return;
+    const move = window.setInterval(() => {
+      setPlayerLane((current) => {
+        const delta = (leftPressed ? -1 : 0) + (rightPressed ? 1 : 0);
+        return Math.max(0, Math.min(LANE_COUNT - 1, current + delta));
+      });
+    }, 75);
+    return () => window.clearInterval(move);
+  }, [leftPressed, rightPressed, running]);
+
+  useEffect(() => {
+    if (!running) return;
+    const tick = window.setInterval(() => {
+      const speedBoost = Math.min(5, Math.floor(elapsedSec / 30));
+      const baseSpeed = 5 + speedBoost;
+
+      setObstacles((current) => {
+        const advanced = current
+          .map((item) => ({ ...item, y: item.y + item.speed }))
+          .filter((item) => item.y < HEIGHT + OBSTACLE_SIZE);
+
+        if (Math.random() < 0.42) {
+          advanced.push({
+            id: obstacleId.current++,
+            lane: Math.floor(Math.random() * LANE_COUNT),
+            y: -OBSTACLE_SIZE,
+            speed: baseSpeed + Math.random() * 2
+          });
+        }
+        return advanced;
+      });
+
+      setCoins((current) => {
+        const advanced = current
+          .map((item) => ({ ...item, y: item.y + item.speed }))
+          .filter((item) => item.y < HEIGHT + COIN_SIZE);
+
+        if (Math.random() < 0.28) {
+          advanced.push({
+            id: coinId.current++,
+            lane: Math.floor(Math.random() * LANE_COUNT),
+            y: -COIN_SIZE,
+            speed: baseSpeed + 1
+          });
+        }
+        return advanced;
+      });
+
+      setDistance((value) => value + 1);
+      setScore((value) => value + difficultyLevel);
+    }, 80);
+
+    return () => window.clearInterval(tick);
+  }, [running, elapsedSec, difficultyLevel]);
+
+  const playerX = playerLane * LANE_WIDTH + (LANE_WIDTH - PLAYER_SIZE) / 2;
+  const playerY = HEIGHT - PLAYER_SIZE - 22;
+
+  const crashed = useMemo(() => {
+    return obstacles.some((item) => {
+      const obstacleX = item.lane * LANE_WIDTH + (LANE_WIDTH - OBSTACLE_SIZE) / 2;
+      const overlapX = obstacleX < playerX + PLAYER_SIZE && obstacleX + OBSTACLE_SIZE > playerX;
+      const overlapY = item.y < playerY + PLAYER_SIZE && item.y + OBSTACLE_SIZE > playerY;
+      return overlapX && overlapY;
+    });
+  }, [obstacles, playerX, playerY]);
+
+  useEffect(() => {
+    if (crashed) setRunning(false);
+  }, [crashed]);
+
+  useEffect(() => {
+    if (!running) return;
+    setCoins((current) => {
+      const remaining: Coin[] = [];
+      let collected = 0;
+
+      for (const item of current) {
+        const coinX = item.lane * LANE_WIDTH + (LANE_WIDTH - COIN_SIZE) / 2;
+        const overlapX = coinX < playerX + PLAYER_SIZE && coinX + COIN_SIZE > playerX;
+        const overlapY = item.y < playerY + PLAYER_SIZE && item.y + COIN_SIZE > playerY;
+        if (overlapX && overlapY) {
+          collected += 1;
+        } else {
+          remaining.push(item);
+        }
+      }
+
+      if (collected > 0) {
+        setCoinCount((value) => value + collected);
+        setScore((value) => value + collected * 25);
+      }
+      return remaining;
+    });
+  }, [running, playerX, playerY]);
+
+  function restartGame() {
+    setPlayerLane(Math.floor(LANE_COUNT / 2));
+    setObstacles([]);
+    setCoins([]);
+    setScore(0);
+    setCoinCount(0);
+    setDistance(0);
+    setElapsedSec(0);
+    setRunning(true);
+    startMs.current = Date.now();
+  }
+
+  return (
+    <div className="shell-gradient min-h-screen px-4 py-6 md:px-8">
+      <div className="mx-auto max-w-5xl overflow-hidden rounded-[32px] border border-white/60 bg-white/90 p-6 shadow-shell backdrop-blur">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-accent">Ski Downhill</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">${spec.appName}</h1>
+            <p className="mt-2 text-slate-600">Dodge obstacles, collect coins, and survive increasing downhill speed.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">Score: <span className="font-semibold">{score}</span></div>
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">Coins: <span className="font-semibold">{coinCount}</span></div>
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">Distance: <span className="font-semibold">{distance} m</span></div>
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">Difficulty: <span className="font-semibold">Lv {difficultyLevel}</span></div>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-950 p-3">
+          <div className="relative overflow-hidden rounded-[18px] border border-slate-800 bg-gradient-to-b from-sky-200 via-sky-100 to-white" style={{ width: WIDTH, height: HEIGHT }}>
+            {Array.from({ length: LANE_COUNT - 1 }).map((_, index) => (
+              <div key={index} className="absolute top-0 bottom-0 border-l border-sky-300/60" style={{ left: (index + 1) * LANE_WIDTH }} />
+            ))}
+
+            {obstacles.map((item) => {
+              const x = item.lane * LANE_WIDTH + (LANE_WIDTH - OBSTACLE_SIZE) / 2;
+              return (
+                <div
+                  key={item.id}
+                  className="absolute rounded-md border border-emerald-900 bg-emerald-700 shadow"
+                  style={{ width: OBSTACLE_SIZE, height: OBSTACLE_SIZE, left: x, top: item.y }}
+                  title="Obstacle"
+                />
+              );
+            })}
+
+            {coins.map((item) => {
+              const x = item.lane * LANE_WIDTH + (LANE_WIDTH - COIN_SIZE) / 2;
+              return (
+                <div
+                  key={item.id}
+                  className="absolute rounded-full border border-amber-400 bg-amber-300 shadow"
+                  style={{ width: COIN_SIZE, height: COIN_SIZE, left: x, top: item.y }}
+                  title="Coin"
+                />
+              );
+            })}
+
+            <div
+              className="absolute rounded-md border border-blue-700 bg-blue-500"
+              style={{ width: PLAYER_SIZE, height: PLAYER_SIZE, left: playerX, top: playerY }}
+            />
+
+            {!running ? (
+              <div className="absolute inset-0 grid place-items-center bg-slate-950/55">
+                <div className="rounded-2xl border border-white/20 bg-slate-900/85 px-6 py-5 text-center">
+                  <h2 className="text-2xl font-semibold text-white">Run ended</h2>
+                  <p className="mt-2 text-sm text-slate-300">Final score: {score} • Coins: {coinCount}</p>
+                  <button className="mt-4 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white" onClick={restartGame}>
+                    Restart
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1">Keyboard: Left / Right or A / D</span>
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1">Restart: R or button</span>
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1">Difficulty ramps every 30 seconds</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+`;
+  }
+
   return `import { useEffect, useMemo, useRef, useState } from "react";
 
 type Asteroid = { id: number; x: number; y: number; speed: number };
@@ -3130,6 +3492,31 @@ function extractRequestedCount(prompt: string, fallback: number): number {
   return Math.max(3, Math.min(30, value));
 }
 
+function marketLookupNotes(spec: PromptSpec): string[] {
+  return spec.assumptions
+    .filter((entry) => entry.startsWith("Lookup: "))
+    .map((entry) => entry.replace(/^Lookup:\s*/, "").trim())
+    .filter(Boolean);
+}
+
+function marketLookupSources(spec: PromptSpec): string[] {
+  return spec.assumptions
+    .filter((entry) => entry.startsWith("Source: "))
+    .map((entry) => entry.replace(/^Source:\s*/, "").trim())
+    .filter(Boolean);
+}
+
+function extractedLeadersFromLookup(notes: string[]): string[] {
+  const leaderNote = notes.find((note) => /leading defi assets:|top movers\/liquidity leaders:/i.test(note));
+  if (!leaderNote) return [];
+  const [, tail = ""] = leaderNote.split(/leading defi assets:|top movers\/liquidity leaders:/i);
+  return tail
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
 function contentPackMain(spec: PromptSpec): string {
   const assistedMain = spec.llmAssist?.main?.trim();
   if (assistedMain) return `${assistedMain}\n`;
@@ -3149,59 +3536,20 @@ function contentPackMain(spec: PromptSpec): string {
       .trim() ?? "N/A";
 
   if (lower.includes("market analysis") || lower.includes("competitive advantages") || lower.includes("market size")) {
-    const lookupSection = lookupNotes.length
-      ? lookupNotes.map((n) => `- ${n}`).join("\n")
+    const liveNotes = marketLookupNotes(spec);
+    const liveSources = marketLookupSources(spec);
+    const lookupSection = liveNotes.length
+      ? liveNotes.map((n) => `- ${n}`).join("\n")
       : "- No live lookup data was available at generation time.";
-    const isCodingAssistants =
-      lower.includes("coding assistant") || lower.includes("code assistant") || lower.includes("developer assistant");
-    const topFive = isCodingAssistants
-      ? [
-          {
-            name: "GitHub Copilot",
-            bestFor: "IDE pair programming",
-            edge: "Ecosystem + IDE integration",
-            weakness: "Policy/IP concerns in some orgs",
-            risk: "Procurement/security blocks"
-          },
-          {
-            name: "Cursor",
-            bestFor: "Agentic IDE workflows",
-            edge: "Fast UX for edits/refactors",
-            weakness: "Tool/vendor coupling",
-            risk: "Fast-moving dependencies"
-          },
-          {
-            name: "ChatGPT (coding)",
-            bestFor: "General coding help + explanations",
-            edge: "Breadth + reasoning",
-            weakness: "Context/tooling integration varies",
-            risk: "Inconsistent reproducibility"
-          },
-          {
-            name: "Anthropic Claude (coding)",
-            bestFor: "Long-context code reasoning",
-            edge: "Strong refactor/analysis",
-            weakness: "IDE integration varies",
-            risk: "Workflow integration gaps"
-          },
-          {
-            name: "Amazon CodeWhisperer",
-            bestFor: "AWS-leaning teams",
-            edge: "AWS ecosystem fit",
-            weakness: "Less flexible outside stack",
-            risk: "Adoption limited to AWS orgs"
-          }
-        ]
+    const leaders = extractedLeadersFromLookup(liveNotes);
+    const leaderRows = leaders.length
+      ? leaders.map((leader, index) => `| ${index + 1} | ${leader} | Real-time market leader from runtime lookup | Requires protocol-level diligence | Crypto volatility and smart-contract risk |`).join("\n")
       : [
-          { name: "#1", bestFor: "", edge: "", weakness: "", risk: "" },
-          { name: "#2", bestFor: "", edge: "", weakness: "", risk: "" },
-          { name: "#3", bestFor: "", edge: "", weakness: "", risk: "" },
-          { name: "#4", bestFor: "", edge: "", weakness: "", risk: "" },
-          { name: "#5", bestFor: "", edge: "", weakness: "", risk: "" }
-        ];
-    const tableRows = topFive
-      .map((p) => `| ${p.name} | ${p.bestFor} | ${p.edge} | ${p.weakness} | ${p.risk} |`)
-      .join("\n");
+          "| 1 | Data unavailable | Await live lookup | Await live lookup | Await live lookup |",
+          "| 2 | Data unavailable | Await live lookup | Await live lookup | Await live lookup |",
+          "| 3 | Data unavailable | Await live lookup | Await live lookup | Await live lookup |"
+        ].join("\n");
+    const sourceSection = liveSources.length ? liveSources.map((source) => `- ${source}`).join("\n") : "- No external sources captured.";
 
     return `# Market Analysis
 
@@ -3209,33 +3557,32 @@ function contentPackMain(spec: PromptSpec): string {
 ${spec.goal}
 
 ## Executive Summary
-- Summary of the competitive landscape and what matters most for buyers.
-- Where defensibility comes from (distribution, data, workflow reliability).
-- Clear risks and what mitigations look like.
+- This analysis uses runtime lookup context captured at generation time instead of static template copy.
+- The highest-signal metrics are listed below exactly as returned by the lookup layer.
+- Any investment view should be treated as directional research, not financial advice.
 
-## Market Size (Directional)
-- **TAM (broad):** AI software + developer tooling continues expanding as teams automate workflows.
-- **SAM (near-term):** buyers adopting coding assistants and agentic tooling for measurable productivity gains.
-- **SOM (realistic wedge):** a narrow segment with a repeatable “job-to-outcome” workflow (e.g., PR reviews, test generation, docs refactors).
-
-## Top 5 Comparison Framework
-| Platform | Best For | Edge | Weakness | Risk |
-|---|---|---|---|---|
-${tableRows}
-
-## Competitive Advantages (What wins)
-- Workflow integration depth (IDE/CI/repo context)
-- Reliability/guardrails and evaluation loops
-- Developer UX (fast onboarding, predictable outputs)
-
-## Risks
-- Vendor coupling / model dependence
-- Trust + security concerns (code leakage, IP risk)
-- Rapid commoditization of “basic” assistant features
-
-## Lookup Notes (optional)
+## Current Market Snapshot
 ${lookupSection}
 
+## Emerging Trends
+- Capital is concentrating around the largest liquid protocols while investors remain selective on risk.
+- Market-share shifts should be tracked alongside sector dominance, 24h volume, and relative strength of category leaders.
+- If this is a DeFi prompt, monitor whether category dominance is expanding faster than the broader crypto market.
+
+## Investment Opportunities
+| Rank | Asset / Segment | Why It Matters | Watch Item | Primary Risk |
+|---|---|---|---|---|
+${leaderRows}
+
+## Key Risks
+- Smart-contract exploits, governance risk, and liquidity fragmentation remain the main structural risks.
+- Category momentum can reverse quickly when leverage unwinds or stablecoin liquidity contracts.
+- Always validate protocol fundamentals, treasury health, token unlock schedules, and regulatory exposure.
+
+## Sources
+${sourceSection}
+
+## Retrieval Timestamp
 - Lookup retrieved at: ${retrievedAt}
 `;
   }
@@ -3243,44 +3590,60 @@ ${lookupSection}
   if (lower.includes("nft collection")) {
     const name = extractNftCollectionName(raw);
 
-    return `# ${name} — Collection Copy Pack
+    return `# ${name} — 10-Piece Cyberpunk NFT Description Set
 
-## Collection Description
-${name} is a character-driven NFT collection built around identity, rarity mechanics, and community storytelling. Each piece is designed to feel distinct, collectible, and recognizable at a glance while still supporting long-term world-building and utility expansion.
+## Collection Overview
+${name} is a cyberpunk generative NFT collection built around neon districts, machine mysticism, and high-contrast character identity. Each piece is written to stand alone as a mint-ready description while still feeling part of a connected world.
 
-## Lore / Story
-In a neon-lit skyway above the old city grid, the Owls learned to read the signal-noise between worlds. Their feathers became antennae, their masks became maps, and their flight paths became routes through hidden markets of memory and light. Holders join the flock as Navigators, unlocking missions, faction votes, and story-driven drops over time.
+## 10 Piece Descriptions
+1. **Neon Ronin**  
+   A blade-lit drifter wrapped in rain-soaked chrome, Neon Ronin carries the glow of back-alley arcades and rooftop duels. Violet edge-lighting and fractured visor reflections make this piece feel sharp, fast, and one step ahead of the grid.
 
-## 5 Rarity Traits
-1. **Mask Type**: Streetglass / Prism / Voidplate  
-2. **Eye Glow**: Ember / Aurora / Singularity  
-3. **Wing Pattern**: Circuit / Hologlyph / Starweave  
-4. **Companion**: Drone Moth / Neon Gecko / Shadow Bat  
-5. **Backdrop District**: Gridline / Cloudport / Blacklight Alley  
+2. **Signal Witch**  
+   Signal Witch bends pirate frequencies into prophecy, weaving glitch halos and cathedral static around a porcelain mask. The piece balances occult calm with machine chaos, making it feel both elegant and dangerous.
 
-## Twitter Launch Announcement
-**Tweet Draft**
-Introducing **${name}** 🦉✨  
-A neon flock built for collectors who love lore, identity traits, and long-term community arcs.
+3. **Chrome Revenant**  
+   Built from scrapyard memory and black-market code, Chrome Revenant stares through the city with a hollow red gaze. Its layered metal textures and industrial silhouette give the piece a haunted, post-collapse authority.
 
-What to expect:
-- character-first design
-- rarity that actually feels meaningful
-- missions + story events + faction choices
+4. **Afterglow Courier**  
+   Racing through midnight express lanes with encrypted cargo strapped to the spine, Afterglow Courier is all momentum and heat. The palette of electric orange, wet asphalt, and scanner blue makes it feel cinematic and urgent.
 
-Mint details soon. Join the flock.  
-#NFT #Web3 #${name.replace(/\s+/g, "")}
+5. **Ghostline Oracle**  
+   Ghostline Oracle reads tomorrow in flickering transit maps and abandoned network tunnels. Thin luminous markings across the faceplate create a quiet, high-intelligence presence that feels rare and unnervingly precise.
+
+6. **Carbon Saint**  
+   Carbon Saint merges street relics with sacred machine design, framing a serene figure in matte black armor and halo circuitry. The result is spiritual cyberpunk: restrained, symbolic, and instantly iconic.
+
+7. **Hex District Idol**  
+   Born from nightclub light, adwall distortion, and synthetic glamour, Hex District Idol is the collection’s loudest statement piece. Saturated magenta lighting and polished metallic features give it celebrity energy with a sharp edge.
+
+8. **Firewall Nomad**  
+   Firewall Nomad survives hostile zones with scavenged plating, thermal fabric, and a visor built for breach runs. Dusty embers and warning-light reds give the artwork a hardened, end-of-network survival tone.
+
+9. **Data Bloom Specter**  
+   A rare fusion of beauty and system decay, Data Bloom Specter blooms in petals of holographic code over a translucent frame. The piece feels dreamlike at first glance, then subtly uncanny as hidden layers resolve.
+
+10. **Zero-Day Monarch**  
+   Zero-Day Monarch rules the skyline in mirrored armor and sovereign neon, projecting power without noise. Crown-like interface geometry and cold cyan highlights position it as the collection’s apex presence.
+
+## Shared Trait Direction
+- **Headgear**: visor, halo rig, signal crown, hood, respirator
+- **Eyes**: ember red, frost blue, ultraviolet, static white
+- **Finish**: chrome, matte carbon, oil-slick, cracked ceramic
+- **Backdrop**: rooftop rain, alley neon, server cathedral, transit void
+- **Companion Motif**: drone moth, holo serpent, shard crow, relay fox
 `;
   }
 
   if (lower.includes("newsletter ideas") || lower.includes("newsletter topic ideas") || lower.includes("newsletter topics")) {
     const itemCount = extractRequestedCount(lower, 20);
     const includeSubjectLines = lower.includes("subject line");
+    const isWeb3 = lower.includes("web3") || lower.includes("crypto") || lower.includes("defi") || lower.includes("nft");
     const topic =
       lower.includes("cybersecurity")
         ? "AI + Cybersecurity"
-        : lower.includes("crypto")
-          ? "AI + Crypto"
+        : isWeb3
+          ? "Web3 Growth + Market Signals"
           : lower.includes("devtools")
             ? "AI + DevTools"
             : "AI + Builder";
@@ -3292,38 +3655,46 @@ Mint details soon. Join the flock.
         ? "\n## Target Audience\nProduct engineering teams and engineering leaders building AI-enabled software.\n"
         : "";
 
-    const ideas = [
-      "Toolchain of the Week",
-      "Build Log teardown",
-      "Security pitfall of the week",
-      "Benchmarks: latency vs quality vs cost",
-      "Agent eval harness template",
-      "Top OSS updates worth pulling",
-      "Incident review: failure mode + fix",
-      "Workflow automation pattern",
-      "API spotlight with practical use-case",
-      "Hot take + rebuttal",
-      "Integration guide (X to Y)",
-      "DevEx bottleneck breakdown",
-      "Prompt patterns that actually work",
-      "Observability guardrail pattern",
-      "Customer workflow ROI story",
-      "Security checklist for tool-using agents",
-      "Release roundup: models and SDKs",
-      "Testing patterns in production",
-      "Weekend mini-project prompt",
-      "Challenge prompt + scoring rubric",
-      "Postmortem lesson of the week",
-      "Cost-control tactic for agent stacks",
-      "Deployment checklist for reliability",
-      "Architecture teardown: one workflow",
-      "Team process upgrade with AI"
-    ];
+    const ideas = isWeb3
+      ? [
+          ["Stablecoin Adoption Watch", "Stablecoins Are Quietly Becoming Web3’s Growth Engine"],
+          ["The Week in DeFi Yield", "Where Yield Is Moving This Week and Why"],
+          ["Token Design Breakdown", "Tokenomics That Incentivize Use, Not Just Hype"],
+          ["Builder Stack Spotlight", "The Web3 Tooling Stack Builders Are Actually Shipping With"],
+          ["Governance Pulse", "What Governance Votes Are Signaling Right Now"],
+          ["Security Lessons", "The Smart Contract Mistake Everyone Is Still Repeating"],
+          ["NFT Market Reframed", "NFTs Aren’t Dead, They’re Just Growing Up"],
+          ["Onchain Consumer Trends", "The Most Interesting Consumer Behavior Happening Onchain"],
+          ["Partnerships That Matter", "The Ecosystem Partnerships Worth Paying Attention To"],
+          ["Macro to Onchain", "How Macro Moves Are Showing Up in Web3 Markets"],
+          ["Community Teardown", "Why Some Web3 Communities Compound and Others Fade"],
+          ["Wallet Funnel Review", "Where Web3 Growth Funnels Are Losing Users"],
+          ["Airdrop Strategy", "Airdrops That Drive Real Retention, Not Just Mercenary Traffic"],
+          ["L2 Momentum", "Which Layer 2 Narratives Still Have Real Momentum"],
+          ["Founder Playbook", "What Smart Web3 Teams Are Doing Differently This Quarter"]
+        ]
+      : [
+          ["Toolchain of the Week", "Toolchain of the Week: What changed this week"],
+          ["Build Log teardown", "Build Log teardown: What changed this week"],
+          ["Security pitfall of the week", "Security pitfall of the week: What changed this week"],
+          ["Benchmarks: latency vs quality vs cost", "Benchmarks: latency vs quality vs cost: What changed this week"],
+          ["Agent eval harness template", "Agent eval harness template: What changed this week"],
+          ["Top OSS updates worth pulling", "Top OSS updates worth pulling: What changed this week"],
+          ["Incident review: failure mode + fix", "Incident review: failure mode + fix: What changed this week"],
+          ["Workflow automation pattern", "Workflow automation pattern: What changed this week"],
+          ["API spotlight with practical use-case", "API spotlight with practical use-case: What changed this week"],
+          ["Hot take + rebuttal", "Hot take + rebuttal: What changed this week"],
+          ["Integration guide (X to Y)", "Integration guide (X to Y): What changed this week"],
+          ["DevEx bottleneck breakdown", "DevEx bottleneck breakdown: What changed this week"],
+          ["Prompt patterns that actually work", "Prompt patterns that actually work: What changed this week"],
+          ["Observability guardrail pattern", "Observability guardrail pattern: What changed this week"],
+          ["Customer workflow ROI story", "Customer workflow ROI story: What changed this week"]
+        ];
     const selected = ideas.slice(0, itemCount);
     const rendered = selected
-      .map((title, index) => {
+      .map(([title, subject], index) => {
         if (!includeSubjectLines) return `${index + 1}. ${title}`;
-        return `${index + 1}. ${title}\n   - Subject: ${title}: What changed this week`;
+        return `${index + 1}. ${title}\n   - Subject: ${subject}`;
       })
       .join("\n");
 
@@ -3342,70 +3713,110 @@ ${audience}
   if (lower.includes("pitch deck outline")) {
     const topic = extractPitchDeckTopic(raw);
     const title = `10-Slide Pitch Deck Outline: ${toTitle(topic)}`;
-
-    const keywordHints: string[] = [];
-    if (lower.includes("qa")) keywordHints.push("QA automation", "test generation", "regression");
-    if (lower.includes("web app")) keywordHints.push("browser flows", "CI integration", "E2E tests");
-
-    const hints = keywordHints.length ? `\n\n## Keyword Anchors\n- ${keywordHints.join("\n- ")}\n` : "";
+    const isCrypto = lower.includes("crypto") || lower.includes("web3") || lower.includes("defi");
+    const hints = isCrypto
+      ? `\n\n## Investor Emphasis\n- distribution moat\n- token/network design discipline\n- regulatory awareness\n- credible GTM beyond speculation\n`
+      : "";
 
     return `# ${title}
 
-1. **Cover**: One-line value prop + who it’s for  
-2. **Problem**: Why QA is still slow/fragile (flake, coverage gaps, manual triage)  
-3. **Solution**: Autonomous QA agents that run, diagnose, and propose fixes  
-4. **Product Demo Flow**: Spec -> generate tests -> run -> report -> fix suggestions -> re-run  
-5. **Market Opportunity**: Teams shipping web apps need faster, safer release cycles  
-6. **Business Model**: Per-seat + CI minutes + enterprise compliance tier  
-7. **Traction / Validation**: Pilot metrics (flake reduction, cycle time, bug escape rate)  
-8. **Moat**: Execution data flywheel (failures -> better heuristics -> better outcomes)  
-9. **Go-To-Market**: Dev teams, QA leads, agencies; CI/DevTools partnerships  
-10. **Team + Ask**: Why us + milestones + funding/partnership ask  
+1. **Cover**: Company name, one-line value prop, and why this matters now  
+2. **Problem**: What pain in crypto/Web3 infrastructure, markets, or user workflows is still unresolved  
+3. **Solution**: Product overview with the clearest user outcome and wedge  
+4. **Why Now**: Market timing, adoption catalyst, or infrastructure shift creating urgency  
+5. **Product Demo / User Flow**: How a user enters, gets value, and stays retained  
+6. **Market Opportunity**: Size of the wedge, growth of the segment, and who pays first  
+7. **Business Model**: SaaS, transaction fees, protocol revenue, or hybrid model with rationale  
+8. **Traction / Validation**: Usage, revenue, pilots, community growth, partnerships, or waitlist proof  
+9. **Go-To-Market**: Ecosystem partnerships, community channels, KOLs, direct sales, or developer distribution  
+10. **Team + Raise**: Why this team, how much you are raising, and what milestones seed capital unlocks  
 
 ## Slide Design Notes
 - 1 key message per slide  
-- show 1 concrete demo flow diagram on slide 4  
-- quantify ROI (time saved, fewer regressions) on slides 5-7
+- keep technical slides legible for non-technical seed investors  
+- quantify traction or proxy demand anywhere you can
 ${hints}`.trim();
   }
 
   if (lower.includes("strategy document") || lower.includes("ai agent strategy") || lower.includes("strategy for")) {
-    const marketplace =
-      lower.includes("customer-support") || lower.includes("customer support")
-        ? "autonomous customer-support marketplace"
-        : "autonomous job marketplace";
+    const isBrandAutomation = lower.includes("content creation") || lower.includes("social media") || lower.includes("my brand");
+    if (isBrandAutomation) {
+      return `# Strategy: AI Agents for Content Creation and Social Media Engagement
 
-    return `# Strategy: Launching a Successful AI Agent (${marketplace})
+## Objective
+Deploy a small stack of AI agents that turns one brand narrative into repeatable, channel-specific content while keeping tone, approvals, and publishing under control.
+
+## Recommended Agent Stack
+1. **Research Agent**: monitors market/news/community signals and pulls reusable talking points  
+2. **Content Strategist Agent**: turns signals into weekly themes, campaign angles, and content calendars  
+3. **Copy Agent**: generates drafts for X/Twitter, newsletters, LinkedIn, blog posts, and short-form captions  
+4. **Engagement Agent**: drafts replies, quote tweets, comment responses, and DM follow-ups for approval  
+5. **Analytics Agent**: scores performance by hook, format, CTA, and posting time and feeds wins back into the system  
+
+## Workflow Design
+- Start with one weekly strategy brief: audience, offer, narrative, and non-negotiable brand rules
+- Research Agent gathers signals and creates a ranked idea bank
+- Content Strategist selects 3-5 content pillars for the week
+- Copy Agent produces channel-specific drafts from each pillar
+- Human reviews high-risk posts; low-risk evergreen posts can be auto-scheduled
+- Analytics Agent reviews results weekly and updates prompt guidance
+
+## Content System
+- **Top of funnel**: opinion posts, trend takes, contrarian hooks
+- **Middle of funnel**: explainers, case studies, teardown threads, carousel-style sequences
+- **Bottom of funnel**: CTA posts, offers, booking prompts, waitlist pushes, conversion follow-ups
+
+## Engagement Automation Rules
+- Auto-draft replies for FAQs, praise, objections, and common onboarding questions
+- Escalate partnership, legal, or sensitive reputation topics to human review
+- Use response libraries for brand tone consistency
+- Cap automation volume to avoid low-signal spam behavior
+
+## Metrics That Matter
+- content output per week
+- save/share/comment rate by format
+- profile visits and click-through rate
+- booked calls, signups, or attributed conversions
+- response time for high-value inbound engagement
+
+## 30 / 60 / 90 Day Rollout
+- **30 days**: define voice guide, build prompt library, automate research and first-draft generation
+- **60 days**: automate scheduling support, engagement drafting, and weekly analytics reviews
+- **90 days**: add performance-based routing so the system prioritizes top-performing hooks, topics, and CTAs
+
+## Guardrails
+- require human approval for claims, partnerships, pricing, or crisis-sensitive content
+- maintain banned phrases, compliance notes, and brand tone rules in one shared source
+- log every prompt, draft, approval, and performance outcome for iteration
+`;
+    }
+
+    return `# Strategy: Launching a Successful AI Agent
 
 ## Positioning
 - Outcome-first agent delivering submission-ready work
-- Reliability as the product (verification, retries, deterministic packaging)
-- Clear niche first, expand later
+- Reliability as the product: verification, retries, and clear limitations
+- Start with one narrow wedge before expanding breadth
 
 ## Monetization
-1. Per-job payouts (primary)
-2. Premium packs (content, audit, frontend, ops)
-3. Subscription / managed mode for teams
+1. Per-task or per-workflow pricing
+2. Premium packs for high-value specialized use cases
+3. Managed automation for teams that want hands-off execution
 
 ## Growth Loops
-1. **Performance loop**: better outputs -> higher acceptance -> better jobs -> better outputs  
-2. **Template loop**: each successful job becomes a reusable pack  
-3. **Distribution loop**: publish samples -> inbound -> more wins  
-
-## Customer-Support Marketplace Playbook (if applicable)
-- **Value metric:** deflection rate, time-to-first-response, SLA adherence, CSAT lift
-- **Agent wedge:** triage + drafting + knowledge retrieval + escalation notes (human-in-the-loop)
-- **Proof:** show before/after workflows + measurable improvements
+1. **Performance loop**: better outputs improve trust and increase usage  
+2. **Template loop**: each successful workflow becomes a reusable operating asset  
+3. **Distribution loop**: public examples and case studies create inbound demand  
 
 ## Execution Plan (30/60/90)
-- 30: lock in reliability + routing + eval harness
-- 60: ship 2 niche packs + improve “real interactivity” in UIs
-- 90: analytics + A/B testing of responses + reputation flywheel
+- 30: stabilize routing, evaluation, and failure handling
+- 60: deepen one niche with stronger templates and metrics
+- 90: add analytics, A/B tests, and workflow expansion
 
 ## Risk Controls
-- strict decline rules for unsafe prompts
-- timeout budgets for lookups
-- never block submission on optional enrichment
+- human review for high-risk decisions
+- timeout budgets for optional enrichments
+- explicit decline rules for unsafe or unsupported tasks
 `;
   }
 
@@ -3522,6 +3933,36 @@ Best,
   }
 
   if (lower.includes("cold email") || lower.includes("cold outreach email")) {
+    const isWeb3 = lower.includes("web3") || lower.includes("crypto") || lower.includes("defi") || lower.includes("partnership");
+    if (isWeb3) {
+      return `# Cold Outreach Email: Web3 Partnership
+
+## Subject Lines
+- Quick partnership idea for [Company]
+- Potential co-marketing + ecosystem collab
+- Exploring a Web3 growth partnership with [Company]
+
+## Email
+Hi [FirstName],
+
+I’m reaching out because we think there’s a strong fit between our Web3 product and [Company]’s audience.
+
+We help teams improve activation and retention with conversion-focused onboarding, campaign assets, and ecosystem growth support. A partnership could be valuable on both sides, especially if you’re looking to give your community more practical ways to discover, onboard, and stay active.
+
+A few ideas we could explore:
+- co-branded educational content or campaign drops
+- ecosystem partner onboarding flows
+- referral, rewards, or launch collaborations
+
+If it’s relevant, I can send over a 1-page partnership concept with audience fit, activation ideas, and a simple pilot scope.
+
+Would you be open to a quick call next week?
+
+Best,  
+[Name]
+`;
+    }
+
     return `# Cold Outreach Email: Demo Booking
 
 ## Subject Lines
@@ -3642,12 +4083,33 @@ function contentPackVariants(spec: PromptSpec): string {
   const lower = raw.toLowerCase();
 
   if (lower.includes("strategy document") || lower.includes("ai agent strategy") || lower.includes("strategy for")) {
-    const domain =
-      lower.includes("customer-support") || lower.includes("customer support")
-        ? "customer-support marketplace"
-        : "autonomous job marketplace";
+    const isBrandAutomation = lower.includes("content creation") || lower.includes("social media") || lower.includes("my brand");
+    if (isBrandAutomation) {
+      return `# Variants: Brand Automation Strategy
 
-    return `# Variants: Strategy Document (${domain})
+## Variant A — Lean Operator Model
+- one research agent
+- one copy agent
+- one analytics agent
+- human approval before publishing
+- optimize around consistency and speed
+
+## Variant B — Campaign Pod Model
+- campaign strategist agent sets weekly themes
+- format agents generate channel-specific posts
+- engagement agent drafts replies and follow-ups
+- analytics agent feeds winners back into prompts
+- best for brands running launches and recurring campaigns
+
+## Variant C — Community-Led Model
+- prioritize replies, quote posts, and community prompts
+- use agents to keep response times low
+- promote UGC, testimonials, and social proof loops
+- best when brand growth depends on conversation density
+`;
+    }
+
+    return `# Variants: Strategy Document
 
 ## Variant A — Direct (operator memo)
 ### Positioning
@@ -3896,6 +4358,47 @@ Best,
   if (lower.includes("pitch deck outline")) {
     const topic = extractPitchDeckTopic(raw);
     const title = toTitle(topic);
+    const isCrypto = lower.includes("crypto") || lower.includes("web3") || lower.includes("defi");
+    if (isCrypto) {
+      return `# Variants: ${title}
+
+## Variant A — Infrastructure / B2B Crypto
+1. Cover
+2. Problem in existing crypto workflows
+3. Infrastructure solution
+4. Product architecture / demo
+5. Market size and buyer wedge
+6. Revenue model
+7. Traction and integrations
+8. Moat and defensibility
+9. GTM via ecosystem distribution
+10. Team and raise
+
+## Variant B — Consumer / Network Growth
+1. Cover and vision
+2. User pain and behavior gap
+3. Product experience
+4. Why now
+5. Retention loop / network effect
+6. Market opportunity
+7. Growth model
+8. Early traction or community signal
+9. Competitive advantage
+10. Team and use of funds
+
+## Variant C — Investor Memo Style
+1. One-line thesis
+2. Market shift creating the opening
+3. Wedge and customer
+4. Product proof
+5. Business model
+6. Traction
+7. Competition
+8. Defensibility
+9. Team
+10. Raise and milestones
+`;
+    }
 
     const baseSlides = [
       ["Cover", "One-line value prop + who it’s for"],
@@ -3957,26 +4460,54 @@ ${data}
     const name = extractNftCollectionName(raw);
     return `# Variants: ${name}
 
-## Variant A — Hype-led launch tweet
-Introducing **${name}** 🦉✨  
-Lore-first characters. Trait layers collectors actually care about.  
-Mint details soon. Join early. #NFT #Web3
+## Variant A — Short Form Descriptions
+- fast, collectible one-liners for marketplace cards
+- hook-first language with strong trait emphasis
+- best for thumbnail browsing contexts
 
-## Variant B — Lore-led collection description
-${name} is a world of neon signals and hidden skyways. Each owl is a navigator with a distinct mask, glow, and district origin built for long-term story arcs and community missions.
+## Variant B — Lore-Rich Descriptions
+- each piece tied to district, role, and mythos
+- stronger narrative for collectors who want world-building
+- best for collection pages and reveal campaigns
 
-## Variant C — Trait spotlight (collector lens)
-Top trait layers:
-1) Mask Type  
-2) Eye Glow  
-3) Wing Pattern  
-4) Companion  
-5) Backdrop District  
-Rare cross-trait combinations appear only in narrow distributions.
+## Variant C — Trait-Led Descriptions
+- foreground colorway, mask, aura, and backdrop
+- built for rarity-focused collectors
+- best for marketplaces where collectors compare pieces quickly
 `;
   }
 
   if (lower.includes("newsletter ideas") || lower.includes("newsletter topic ideas") || lower.includes("newsletter topics")) {
+    const isWeb3 = lower.includes("web3") || lower.includes("crypto") || lower.includes("defi") || lower.includes("nft");
+    if (isWeb3) {
+      return `# Variants
+
+## Variant A — Market-Led Newsletter
+1. macro to onchain flows
+2. DeFi yield shifts
+3. token movement and narratives
+4. governance signals
+5. ecosystem partnerships
+6. regulatory watch
+7. wallet behavior trends
+8. NFT category movement
+9. L2 traction signals
+10. builder opportunities
+
+## Variant B — Builder-Led Newsletter
+1. protocol teardowns
+2. smart contract lessons
+3. growth funnel reviews
+4. community operating systems
+5. token design breakdowns
+6. launch strategy analysis
+7. user retention loops
+8. ecosystem tooling
+9. GTM experiments
+10. founder playbooks
+`;
+    }
+
     return `# Variants
 
 ## Variant A — 10 deep-dive angles

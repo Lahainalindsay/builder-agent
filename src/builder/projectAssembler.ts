@@ -10,7 +10,7 @@ import { attemptRepair } from "./repairProject";
 import { zipProject } from "./zipProject";
 import { BuildResult } from "../types/spec";
 import { runExternalLookups, serializeLookupsForPrompt } from "../skills/lookupEngine";
-import { attemptLlmRepair, createLlmBudget, maybeGenerateContentAssist } from "../llm/assist";
+import { attemptLlmRepair, createLlmBudget, maybeGenerateContentAssist, maybeGenerateLandingAssist } from "../llm/assist";
 
 export async function buildProject(rawPrompt: string, outputDir: string): Promise<BuildResult> {
   const llmBudget = createLlmBudget();
@@ -31,6 +31,11 @@ export async function buildProject(rawPrompt: string, outputDir: string): Promis
     if (contentAssist.keywords.length) {
       spec.assumptions = [...spec.assumptions, `LLM keywords: ${contentAssist.keywords.join(", ")}`].slice(0, 18);
     }
+  }
+  const landingAssist = await maybeGenerateLandingAssist(spec, llmBudget);
+  if (landingAssist) {
+    spec.landingLlmAssist = landingAssist;
+    spec.assumptions = [...spec.assumptions, "LLM landing JSON enabled for this run"].slice(0, 18);
   }
   const template = selectTemplate(spec);
   const files = template.generate(spec);

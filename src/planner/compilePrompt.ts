@@ -522,6 +522,9 @@ function inferFeatures(
       "keyboard",
       "score",
       "restart",
+      "obstacle",
+      "coin",
+      "downhill",
       "asteroid"
     ]);
   }
@@ -778,7 +781,7 @@ function buildAcceptanceChecks(appType: AppType, pages: RouteSpec[], features: F
       id: "behavior-game-loop",
       type: "behavior",
       description: "Game includes controls, score updates, and restart handling",
-      containsSnippets: ["keydown", "score", "restart", "asteroid"]
+      containsSnippets: ["keydown", "score", "restart", "obstacle", "coin", "downhill", "asteroid"]
     });
   }
 
